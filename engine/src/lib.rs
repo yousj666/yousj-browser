@@ -8,6 +8,8 @@
 //!   char*  yousj_title(const Doc* doc);   // malloc'd, free with yousj_free_str
 //!   char*  yousj_text(const Doc* doc);
 //!   char*  yousj_links(const Doc* doc);   // newline-separated hrefs
+//!   char*  yousj_anchors(const Doc* doc); // lines of "href\tanchor text"
+//!   char*  yousj_dom_tree(const Doc* doc); // indented DOM tree (Elements panel)
 //!   void   yousj_free_str(char* s);
 
 mod dom;
@@ -56,6 +58,41 @@ impl Doc {
             }
         }
         None
+    }
+
+    /// Dump an indented DOM tree for the Elements panel. `budget` caps the
+    /// node count so giant pages don't explode the output.
+    fn dump_tree(&self, idx: usize, depth: usize, out: &mut String, budget: &mut usize) {
+        if *budget == 0 {
+            return;
+        }
+        *budget -= 1;
+        let n = &self.arena[idx];
+        let indent = "  ".repeat(depth.min(24));
+        match n.tag.as_deref() {
+            None => {
+                let t = collapse_ws(&n.text);
+                if !t.is_empty() {
+                    let short: String = t.chars().take(60).collect();
+                    out.push_str(&format!("{}#text \"{}\"\n", indent, short));
+                }
+            }
+            Some(tag) => {
+                let mut line = format!("{}{}", indent, tag);
+                for key in ["id", "class", "href", "src", "name", "type",
+                            "lang", "alt", "title"] {
+                    if let Some(v) = n.attr(key) {
+                        let short: String = v.chars().take(48).collect();
+                        line.push_str(&format!(" {}=\"{}\"", key, short));
+                    }
+                }
+                out.push_str(&line);
+                out.push('\n');
+                for &c in &n.children {
+                    self.dump_tree(c, depth + 1, out, budget);
+                }
+            }
+        }
     }
 }
 
@@ -144,4 +181,45 @@ pub extern "C" fn yousj_links(doc: *const Doc) -> *mut c_char {
     let mut out = Vec::new();
     rec(d, d.root, &mut out);
     to_c_string(out.join("\n"))
+}
+
+/// One line per anchor: "href\tanchor text". Used by search result parsing.
+#[no_mangle]
+pub extern "C" fn yousj_anchors(doc: *const Doc) -> *mut c_char {
+    if doc.is_null() {
+        return std::ptr::null_mut();
+    }
+    let d = unsafe { &*doc };
+    fn rec(d: &Doc, idx: usize, out: &mut Vec<String>) {
+        let n = &d.arena[idx];
+        if n.tag.as_deref() == Some("a") {
+            if let Some(h) = n.attr("href") {
+                let t = collapse_ws(&d.node_text(idx));
+                let short: String = t.chars().take(120).collect();
+                out.push(format!("{}\t{}", h, short));
+            }
+        }
+        for &c in &n.children {
+            rec(d, c, out);
+        }
+    }
+    let mut out = Vec::new();
+    rec(d, d.root, &mut out);
+    to_c_string(out.join("\n"))
+}
+
+/// Indented DOM tree text for the Elements panel (F12).
+#[no_mangle]
+pub extern "C" fn yousj_dom_tree(doc: *const Doc) -> *mut c_char {
+    if doc.is_null() {
+        return std::ptr::null_mut();
+    }
+    let d = unsafe { &*doc };
+    let mut s = String::new();
+    let mut budget = 3000usize;
+    d.dump_tree(d.root, 0, &mut s, &mut budget);
+    if budget == 0 {
+        s.push_str("... (truncated: DOM too large)\n");
+    }
+    to_c_string(s)
 }

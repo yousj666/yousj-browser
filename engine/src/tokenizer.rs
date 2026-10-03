@@ -53,6 +53,42 @@ fn c_decode_entity(name: &[u8], out: &mut Vec<u8>) -> bool {
     true
 }
 
+/// Decode character entities (e.g. `&amp;`) in a raw byte span.
+/// Used for both text content and attribute values.
+fn decode_entities(input: &[u8]) -> String {
+    let mut out: Vec<u8> = Vec::new();
+    let mut i = 0;
+    while i < input.len() {
+        if input[i] == b'&' {
+            let ns = i + 1;
+            let mut j = ns;
+            while j < input.len()
+                && input[j] != b';'
+                && j - ns < 12
+                && (input[j].is_ascii_alphanumeric() || input[j] == b'#')
+            {
+                j += 1;
+            }
+            if j < input.len() && input[j] == b';' {
+                if !c_decode_entity(&input[ns..j], &mut out) {
+                    out.push(b'&');
+                    out.extend_from_slice(&input[ns..j]);
+                    out.push(b';');
+                }
+                i = j + 1; // consume ';'
+            } else {
+                // Not an entity: emit the '&' literally.
+                out.push(b'&');
+                i += 1;
+            }
+        } else {
+            out.push(input[i]);
+            i += 1;
+        }
+    }
+    String::from_utf8_lossy(&out).into_owned()
+}
+
 #[derive(Debug)]
 pub enum Token {
     StartTag {
@@ -225,8 +261,7 @@ impl<'a> Tokenizer<'a> {
                         while !self.eof() && self.peek() != q {
                             self.pos += 1;
                         }
-                        val = String::from_utf8_lossy(&self.input[start..self.pos])
-                            .into_owned();
+                        val = decode_entities(&self.input[start..self.pos]);
                         if !self.eof() {
                             self.pos += 1;
                         }
@@ -242,8 +277,7 @@ impl<'a> Tokenizer<'a> {
                         {
                             self.pos += 1;
                         }
-                        val = String::from_utf8_lossy(&self.input[start..self.pos])
-                            .into_owned();
+                        val = decode_entities(&self.input[start..self.pos]);
                     }
                 }
             }
@@ -299,39 +333,10 @@ impl<'a> Tokenizer<'a> {
     }
 
     fn read_text(&mut self) -> Token {
-        let mut out: Vec<u8> = Vec::new();
+        let start = self.pos;
         while !self.eof() && self.peek() != b'<' {
-            if self.peek() == b'&' {
-                let save = self.pos;
-                self.pos += 1;
-                let ns = self.pos;
-                while !self.eof()
-                    && self.peek() != b';'
-                    && self.pos - ns < 12
-                    && (self.input[self.pos].is_ascii_alphanumeric()
-                        || self.input[self.pos] == b'#')
-                {
-                    self.pos += 1;
-                }
-                if !self.eof() && self.peek() == b';' {
-                    let body = self.input[ns..self.pos].to_vec();
-                    self.pos += 1; // consume ';'
-                    if !c_decode_entity(&body, &mut out) {
-                        out.push(b'&');
-                        out.extend_from_slice(&body);
-                        out.push(b';');
-                    }
-                } else {
-                    // Not an entity: emit the '&' literally.
-                    self.pos = save;
-                    out.push(b'&');
-                    self.pos += 1;
-                }
-            } else {
-                out.push(self.peek());
-                self.pos += 1;
-            }
+            self.pos += 1;
         }
-        Token::Text(String::from_utf8_lossy(&out).into_owned())
+        Token::Text(decode_entities(&self.input[start..self.pos]))
     }
 }

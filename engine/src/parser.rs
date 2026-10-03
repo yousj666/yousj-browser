@@ -10,15 +10,21 @@ pub fn parse(html: &str) -> (Vec<Node>, usize) {
     arena.push(Node::elem("#document"));
     let mut stack: Vec<usize> = vec![0];
     let mut html_open = false;
+    let mut implied_html: Option<usize> = None;
 
-    // Lazily create the implied <html> element.
-    let mut ensure_html = |arena: &mut Vec<Node>, stack: &mut Vec<usize>| {
+    // Lazily create the implied <html> element. Returns its index when created.
+    let mut ensure_html = |arena: &mut Vec<Node>,
+                           stack: &mut Vec<usize>|
+     -> Option<usize> {
         if !html_open {
             let h = arena.len();
             arena.push(Node::elem("html"));
             arena[0].children.push(h);
             stack.push(h);
             html_open = true;
+            Some(h)
+        } else {
+            None
         }
     };
 
@@ -31,7 +37,9 @@ pub fn parse(html: &str) -> (Vec<Node>, usize) {
                 if s.is_empty() {
                     continue;
                 }
-                ensure_html(&mut arena, &mut stack);
+                if let Some(h) = ensure_html(&mut arena, &mut stack) {
+                    implied_html = Some(h);
+                }
                 let parent = *stack.last().unwrap();
                 // Merge into a trailing text node to avoid fragmentation.
                 if let Some(&last) = arena[parent].children.last() {
@@ -49,7 +57,29 @@ pub fn parse(html: &str) -> (Vec<Node>, usize) {
                 attrs,
                 self_closing,
             } => {
-                ensure_html(&mut arena, &mut stack);
+                if let Some(h) = ensure_html(&mut arena, &mut stack) {
+                    implied_html = Some(h);
+                }
+                // A real <html> tag reuses the implied one instead of nesting
+                // a second <html> inside it.
+                if c_tag_eq_str(&name, "html") {
+                    if let Some(h) = implied_html {
+                        if *stack.last().unwrap() == h
+                            && arena[h].children.is_empty()
+                        {
+                            for (k, v) in attrs {
+                                if !arena[h]
+                                    .attrs
+                                    .iter()
+                                    .any(|(ek, _)| ek.eq_ignore_ascii_case(&k))
+                                {
+                                    arena[h].attrs.push((k, v));
+                                }
+                            }
+                            continue;
+                        }
+                    }
+                }
                 // Auto-close an open <p> when a new <p> starts.
                 if c_tag_eq_str(&name, "p") {
                     if let Some(&t) = stack.last() {

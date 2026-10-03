@@ -27,6 +27,10 @@ _lib.yousj_text.argtypes = [ctypes.c_void_p]
 _lib.yousj_text.restype = ctypes.c_void_p
 _lib.yousj_links.argtypes = [ctypes.c_void_p]
 _lib.yousj_links.restype = ctypes.c_void_p
+_lib.yousj_anchors.argtypes = [ctypes.c_void_p]
+_lib.yousj_anchors.restype = ctypes.c_void_p
+_lib.yousj_dom_tree.argtypes = [ctypes.c_void_p]
+_lib.yousj_dom_tree.restype = ctypes.c_void_p
 
 _lib.yousj_free_str.argtypes = [ctypes.c_void_p]
 _lib.yousj_free_str.restype = None
@@ -62,6 +66,21 @@ class Document:
     def links(self):
         raw = _take_str(_lib.yousj_links(self._ptr))
         return [l for l in raw.split("\n") if l]
+
+    def anchors(self):
+        """List of (href, anchor_text) in document order."""
+        raw = _take_str(_lib.yousj_anchors(self._ptr))
+        out = []
+        for line in raw.split("\n"):
+            if not line.strip():
+                continue
+            href, _, text = line.partition("\t")
+            out.append((href, text))
+        return out
+
+    def dom_tree(self) -> str:
+        """Indented DOM tree text (Elements panel)."""
+        return _take_str(_lib.yousj_dom_tree(self._ptr))
 
 
 def parse(html: str) -> Document:
