@@ -12,11 +12,42 @@ usage:
 """
 import sys
 
-from . import devtools, fetch, search as _search, settings
+from . import devtools, fetch, search as _search, security, settings
+
+
+def _cli_risky_flow(url):
+    """Interactive two-layer risk confirmation. Returns a bypass token,
+    or None when the user backs out / stdin isn't interactive."""
+    p1 = security.warn_first(url)
+    if p1.get("allowed"):
+        return None
+    print("⚠ " + p1["text"])
+    for i, c in enumerate(p1["choices"], 1):
+        print("  %d. %s" % (i, c))
+    if not sys.stdin.isatty():
+        print("(非交互模式：拒绝访问)", file=sys.stderr)
+        return None
+    if input("选择 [1/%d]: " % len(p1["choices"])).strip() != "2":
+        print("已退出，不访问。")
+        return None
+    p2 = security.warn_second(url)
+    print("⚠ " + p2["text"])
+    for i, c in enumerate(p2["choices"], 1):
+        print("  %d. %s" % (i, c))
+    if input("选择 [1/%d]: " % len(p2["choices"])).strip() != "2":
+        print("已退出，不访问。")
+        return None
+    return security.confirm_visit(url)
 
 
 def _cmd_fetch(url):
-    doc = fetch(url)
+    try:
+        doc = fetch(url)
+    except security.SecurityError:
+        token = _cli_risky_flow(url)
+        if token is None:
+            return 1
+        doc = fetch(url, bypass_token=token)
     print("== title ==")
     print(doc.title())
     print("== text (first 2000 chars) ==")
@@ -47,6 +78,11 @@ def _cmd_search(query):
 def _cmd_devtools(url):
     try:
         session = devtools.inspect(url)
+    except security.SecurityError:
+        token = _cli_risky_flow(url)
+        if token is None:
+            return 1
+        session = devtools.inspect(url, bypass_token=token)
     except Exception as e:  # noqa: BLE001
         print("devtools failed: %s" % e, file=sys.stderr)
         return 1

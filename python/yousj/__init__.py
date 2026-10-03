@@ -12,9 +12,13 @@ from . import security
 from . import settings
 
 
-def fetch(url: str, timeout: int = 15) -> Document:
-    """Fetch a URL and return a parsed Document."""
-    html = net.get(url, timeout=timeout)
+def fetch(url: str, timeout: int = 15, bypass_token=None) -> Document:
+    """Fetch a URL and return a parsed Document.
+
+    ``bypass_token`` comes from ``security.confirm_visit`` after the
+    two-layer risk confirmation for blocked URLs.
+    """
+    html = net.get(url, timeout=timeout, bypass_token=bypass_token)
     return parse(html)
 
 

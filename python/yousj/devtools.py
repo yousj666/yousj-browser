@@ -151,12 +151,12 @@ class Session:
         self.doc = doc
 
     @classmethod
-    def open(cls, url, timeout=15):
+    def open(cls, url, timeout=15, bypass_token=None):
         """Fetch + parse a URL, like opening DevTools on a fresh page load."""
         Console.log("navigating to %s" % url)
         t0 = time.monotonic()
         try:
-            html = _net.get(url, timeout=timeout)
+            html = _net.get(url, timeout=timeout, bypass_token=bypass_token)
         except Exception as e:  # noqa: BLE001
             Console.error("fetch failed: %s" % e)
             raise
@@ -185,6 +185,6 @@ class Session:
         return "\n".join(out)
 
 
-def inspect(url, timeout=15):
+def inspect(url, timeout=15, bypass_token=None):
     """Open F12 on a URL. Returns a Session."""
-    return Session.open(url, timeout=timeout)
+    return Session.open(url, timeout=timeout, bypass_token=bypass_token)

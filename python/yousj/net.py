@@ -52,15 +52,22 @@ def clear_log():
     del request_log[:]
 
 
-def get(url: str, timeout: int = 15, max_redirects: int = 5) -> str:
+def get(url: str, timeout: int = 15, max_redirects: int = 5,
+        bypass_token=None) -> str:
+    """Fetch a URL. ``bypass_token`` comes from
+    ``yousj.security.confirm_visit`` after the two-layer risk confirmation."""
     current = url
     hops = 0
+    first = True
     while True:
         entry = {"url": current, "method": "GET", "status": None,
                  "bytes": 0, "ms": 0.0, "error": None}
         t0 = time.monotonic()
         try:
-            security.validate_url(current)
+            # The bypass token (if any) only applies to the first hop.
+            security.validate_url(current,
+                                  bypass_token=bypass_token if first else None)
+            first = False
             req = urllib.request.Request(current, headers=HEADERS)
             with _opener.open(req, timeout=timeout) as r:
                 if r.status in _REDIRECTS:

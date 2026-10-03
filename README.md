@@ -86,6 +86,29 @@ Scraping your own intranet? Opt out explicitly:
 yousj.settings.set("allow_private_urls", True)
 ```
 
+### Two-layer risk confirmation ("偏要进去")
+
+A blocked URL isn't unvisitable — but the AI must walk through two warnings.
+`yousj.security`:
+
+```python
+p1 = security.warn_first(url)
+# {"text": "此网站危险，不建议访问。原因：…",
+#  "choices": ["退出不访问（推荐）", "访问（不推荐）"]}
+# AI chooses "访问（不推荐）" ->
+p2 = security.warn_second(url)
+# {"text": "确定要访问吗？如果出了事概不负责。",
+#  "choices": ["不访问", "访问"]}
+# AI chooses "访问" ->
+token = security.confirm_visit(url)          # one-time bypass token
+html = net.get(url, bypass_token=token)       # now it fetches
+```
+
+Layers can't be skipped (each step requires the previous one, 10-minute
+window). The token is single-use, bound to the exact URL, expires after
+10 minutes. A blocked redirect hop needs its own confirmation. The CLI
+(`fetch` / `devtools`) runs the same two prompts interactively.
+
 ## License
 
 MIT — see [LICENSE](LICENSE). (The future UI shell / product layer is not
