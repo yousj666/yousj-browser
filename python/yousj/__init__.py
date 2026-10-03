@@ -8,6 +8,7 @@ from .engine import Document, parse
 from . import devtools
 from . import net
 from . import search as _search_mod
+from . import security
 from . import settings
 
 
@@ -25,5 +26,5 @@ def search(query: str, max_results: int = 10, engine_name=None,
 
 
 __all__ = ["fetch", "parse", "search", "Document", "devtools", "net",
-           "settings"]
+           "security", "settings"]
 __version__ = "0.2.0"

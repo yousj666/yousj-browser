@@ -68,6 +68,24 @@ too (`href="/?x=1&amp;y=2"`); new `yousj_anchors` / `yousj_dom_tree` FFI.
 - v0.4: CSS parsing + box layout (towards a visible browser)
 - Later: UI shell
 
+## Security (SSRF protection)
+
+Every URL fetched through `yousj.net` is validated first (`yousj.security`):
+
+- only `http://` / `https://` — `file://`, `ftp://`, … are rejected
+- hosts must resolve to public IPs — loopback, RFC1918, link-local
+  (e.g. cloud metadata `169.254.169.254`), multicast and reserved ranges
+  are blocked, including literal IPs in the URL
+- every redirect hop is validated too (no 302 bypass to an intranet address);
+  each hop is logged in the F12 Network panel
+- fail closed: unverifiable URLs are not fetched
+
+Scraping your own intranet? Opt out explicitly:
+
+```python
+yousj.settings.set("allow_private_urls", True)
+```
+
 ## License
 
 MIT — see [LICENSE](LICENSE). (The future UI shell / product layer is not
