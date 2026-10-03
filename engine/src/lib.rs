@@ -11,8 +11,16 @@
 //!   char*  yousj_anchors(const Doc* doc); // lines of "href\tanchor text"
 //!   char*  yousj_dom_tree(const Doc* doc); // indented DOM tree (Elements panel)
 //!   void   yousj_free_str(char* s);
+//!
+//! With `--features js` (see build-js.sh) one more is available:
+//!
+//!   char*  yousj_run_js(Doc* doc, const char* js, size_t len);
+//!          // runs JS against the live DOM; returns malloc'd JSON:
+//!          // {"console": [...], "error": null | "msg"}
 
 mod dom;
+#[cfg(feature = "js")]
+mod js;
 mod parser;
 mod tokenizer;
 
@@ -222,4 +230,54 @@ pub extern "C" fn yousj_dom_tree(doc: *const Doc) -> *mut c_char {
         s.push_str("... (truncated: DOM too large)\n");
     }
     to_c_string(s)
+}
+
+/// Run JavaScript against the live DOM (only with `--features js`).
+///
+/// Takes `*mut Doc` because scripts may mutate the DOM. Returns a malloc'd
+/// JSON string (free with `yousj_free_str`):
+/// `{"console": ["..."], "error": null}` or `"error": "<message>"`.
+#[cfg(feature = "js")]
+#[no_mangle]
+pub extern "C" fn yousj_run_js(
+    doc: *mut Doc,
+    js: *const c_char,
+    len: usize,
+) -> *mut c_char {
+    if doc.is_null() || js.is_null() {
+        return std::ptr::null_mut();
+    }
+    let bytes = unsafe { std::slice::from_raw_parts(js as *const u8, len) };
+    let src = String::from_utf8_lossy(bytes);
+    let d = unsafe { &mut *doc };
+    let (console, error) = js::run_on_doc(d, &src);
+
+    fn esc(s: &str) -> String {
+        s.replace('\\', "\\\\")
+            .replace('"', "\\\"")
+            .replace('\n', "\\n")
+            .replace('\r', "\\r")
+            .replace('\t', "\\t")
+    }
+
+    let mut out = String::from("{\"console\": [");
+    for (i, line) in console.iter().enumerate() {
+        if i > 0 {
+            out.push_str(", ");
+        }
+        out.push('"');
+        out.push_str(&esc(line));
+        out.push('"');
+    }
+    out.push_str("], \"error\": ");
+    match error {
+        None => out.push_str("null"),
+        Some(e) => {
+            out.push('"');
+            out.push_str(&esc(&e));
+            out.push('"');
+        }
+    }
+    out.push('}');
+    to_c_string(out)
 }

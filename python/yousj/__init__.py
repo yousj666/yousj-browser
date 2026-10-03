@@ -31,4 +31,4 @@ def search(query: str, max_results: int = 10, engine_name=None,
 
 __all__ = ["fetch", "parse", "search", "Document", "devtools", "net",
            "security", "settings"]
-__version__ = "0.2.0"
+__version__ = "0.2.2"

@@ -2,11 +2,12 @@
 
 Every request goes through ``yousj.security`` first (SSRF protection:
 no file:// URLs, no intranet/private IPs, every redirect hop validated).
+Response bodies are size-capped (DoS protection, gzip bombs included).
 """
-import gzip
 import time
 import urllib.parse
 import urllib.request
+import zlib
 
 from . import security
 
@@ -52,10 +53,40 @@ def clear_log():
     del request_log[:]
 
 
+def _read_limited(r, max_bytes):
+    """Read the response body with a hard size cap (DoS protection).
+
+    Caps both the raw bytes on the wire and the gzip-decompressed size,
+    so a 10KB gzip bomb can't expand into gigabytes of RAM.
+    Raises ValueError when the cap is exceeded. ``max_bytes=None`` disables
+    the cap (only if you know what you're doing).
+    """
+    if max_bytes is None:
+        raw = r.read()
+        if r.headers.get("Content-Encoding") == "gzip":
+            raw = zlib.decompress(raw, 16 + zlib.MAX_WBITS)
+        return raw
+    raw = r.read(max_bytes + 1)
+    if len(raw) > max_bytes:
+        raise ValueError("response body exceeded %d bytes" % max_bytes)
+    if r.headers.get("Content-Encoding") == "gzip":
+        decomp = zlib.decompressobj(16 + zlib.MAX_WBITS)
+        try:
+            data = decomp.decompress(raw, max_bytes + 1)
+        except zlib.error as e:
+            raise ValueError("bad gzip body: %s" % e)
+        if len(data) > max_bytes or decomp.unconsumed_tail:
+            raise ValueError(
+                "decompressed body exceeded %d bytes" % max_bytes)
+        raw = data
+    return raw
+
+
 def get(url: str, timeout: int = 15, max_redirects: int = 5,
-        bypass_token=None) -> str:
+        bypass_token=None, max_bytes: int = 10_000_000) -> str:
     """Fetch a URL. ``bypass_token`` comes from
-    ``yousj.security.confirm_visit`` after the two-layer risk confirmation."""
+    ``yousj.security.confirm_visit`` after the two-layer risk confirmation.
+    ``max_bytes`` caps the response body (10MB default, None = unlimited)."""
     current = url
     hops = 0
     first = True
@@ -80,9 +111,7 @@ def get(url: str, timeout: int = 15, max_redirects: int = 5,
                     current = urllib.parse.urljoin(current, loc)
                     hops += 1
                     continue
-                raw = r.read()
-                if r.headers.get("Content-Encoding") == "gzip":
-                    raw = gzip.decompress(raw)
+                raw = _read_limited(r, max_bytes)
                 entry["status"] = r.status
                 entry["bytes"] = len(raw)
                 charset = r.headers.get_content_charset() or "utf-8"

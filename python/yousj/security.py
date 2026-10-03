@@ -35,9 +35,19 @@ intranet)::
 
     yousj.settings.set("allow_private_urls", True)
 
-Note: the check is resolve-then-validate. A hostile DNS that changes its
-answer between the check and the connection (DNS rebinding) is out of scope
-for this layer.
+Known residual risks (documented honestly, not silently):
+
+- **DNS rebinding**: the check is resolve-then-validate, so an attacker who
+  controls a domain's DNS could flip it from a public IP to a private IP in
+  the millisecond window between validation and connection. Exploiting this
+  needs attacker-controlled DNS *and* winning that race on *every* request
+  (each redirect hop re-validates), and the target must be an intranet HTTP
+  service that answers a plain GET usefully. Fully closing it needs DNS
+  pinning inside our own network layer (what Chromium does with its
+  HostResolver) — and doing that half-correctly (custom TLS SNI / cert
+  verification, proxy interplay) risks introducing worse bugs than it fixes.
+  It stays on the roadmap for the dedicated network layer; it is not
+  something a 20-line patch can safely claim to solve.
 """
 import ipaddress
 import secrets

@@ -79,6 +79,8 @@ Every URL fetched through `yousj.net` is validated first (`yousj.security`):
 - every redirect hop is validated too (no 302 bypass to an intranet address);
   each hop is logged in the F12 Network panel
 - fail closed: unverifiable URLs are not fetched
+- response bodies are capped at 10MB (`net.get(..., max_bytes=...)`),
+  counting gzip-decompressed size too (no decompression bombs)
 
 Scraping your own intranet? Opt out explicitly:
 
@@ -108,6 +110,14 @@ Layers can't be skipped (each step requires the previous one, 10-minute
 window). The token is single-use, bound to the exact URL, expires after
 10 minutes. A blocked redirect hop needs its own confirmation. The CLI
 (`fetch` / `devtools`) runs the same two prompts interactively.
+
+**Known residual risk — DNS rebinding**: the check is resolve-then-validate,
+so a hostile DNS could flip public→private in the millisecond window before
+connect. Exploiting it needs attacker-controlled DNS *and* winning that race
+on every request (each hop re-validates). Closing it properly needs DNS
+pinning inside our own network layer (a bigger project, on the roadmap) —
+a rushed 20-line patch here risks worse TLS bugs than it fixes, so it's
+documented, not half-fixed.
 
 ## License
 

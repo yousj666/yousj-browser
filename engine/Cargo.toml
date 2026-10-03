@@ -8,3 +8,16 @@ crate-type = ["cdylib"]
 
 [build-dependencies]
 cc = "1"
+
+# NOTE on the `js` feature (yousj-js integration):
+# The JS engine lives in ../js-engine, which is intentionally NOT a cargo
+# dependency here. An `optional = true` path dependency would break public
+# builds: cargo fails to resolve the manifest when the directory is absent,
+# even with the feature disabled (verified: "no matching package named").
+# Instead, js.rs includes the yousj_js crate via RUSTFLAGS:
+#   ./build-js.sh
+# which builds ../js-engine to an rlib and passes
+#   --extern yousj_js=<...>/libyousj_js.rlib
+# Public clones (no js-engine/) build fine: js.rs is cfg'd out entirely.
+[features]
+js = []
