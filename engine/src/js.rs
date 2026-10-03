@@ -250,7 +250,14 @@ fn flow_err_msg(e: FlowError) -> String {
 }
 
 /// Run JS source against a live `Doc`. Returns `(console_lines, error)`.
+///
+/// The `DomHost` trait object requires `'static`; the borrow is extended via
+/// a raw pointer. This is sound here: the `Doc` is owned by the C/Python
+/// caller, which keeps it alive across `yousj_run_js`, and the interpreter
+/// (the only holder of the `'static` reference) is dropped before return —
+/// the reference never escapes this function.
 pub fn run_on_doc(doc: &mut Doc, src: &str) -> (Vec<String>, Option<String>) {
+    let doc: &'static mut Doc = unsafe { &mut *(doc as *mut Doc) };
     let host: Rc<dyn DomHost> = Rc::new(JsDoc::new(doc));
     let prog = match yousj_js::parse_source(src) {
         Ok(p) => p,
