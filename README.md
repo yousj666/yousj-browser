@@ -70,4 +70,5 @@ too (`href="/?x=1&amp;y=2"`); new `yousj_anchors` / `yousj_dom_tree` FFI.
 
 ## License
 
-TBD (intended: MIT for the engine).
+MIT — see [LICENSE](LICENSE). (The future UI shell / product layer is not
+decided yet and may be licensed separately.)

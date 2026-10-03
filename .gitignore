@@ -1,0 +1,21 @@
+# Rust build output
+engine/target/
+js-engine/target/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+
+# C objects
+*.o
+*.so
+
+# Editor / OS
+.vscode/
+.idea/
+.DS_Store
+
+# Local settings (user-specific, not for the repo)
+# ~/.config/yousj/settings.json holds personal search engine choice
