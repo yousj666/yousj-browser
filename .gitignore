@@ -17,5 +17,8 @@ __pycache__/
 .idea/
 .DS_Store
 
+# Secret background project: our own JS engine (not public yet)
+js-engine/
+
 # Local settings (user-specific, not for the repo)
 # ~/.config/yousj/settings.json holds personal search engine choice
