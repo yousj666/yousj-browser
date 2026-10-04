@@ -134,13 +134,18 @@ def active_proxy():
 # DNS pinning (DNS-rebinding defense, direct connections only)
 # ---------------------------------------------------------------------------
 # validate_url() is resolve-then-check: between the check and the socket
-# connect, a hostile DNS could flip the answer. We close that window by
-# resolving ourselves, SSRF-validating *every* returned IP
-# (security.resolve_validated_ips), then dialing the pinned IP directly.
-# The HTTP Host header — and TLS SNI / certificate hostname verification
-# for https — still use the original domain name, so virtual hosting and
-# cert validation behave exactly as before. Proxy mode skips pinning (the
-# proxy resolves the name remotely).
+# connect, a hostile DNS could flip the answer. We close that window with
+# exactly one resolution per hop: _select_opener() resolves the hostname
+# itself, SSRF-validates *every* returned IP
+# (security.resolve_validated_ips — one bad IP rejects the whole host),
+# then dials the pinned IP directly. There is no second DNS lookup and no
+# fallback to an unpinned opener: any validation/resolution failure raises
+# SecurityError (fail closed). A bypass token (explicit two-layer user
+# confirmation) lifts the public-IP filter but the resolution is still
+# done once and pinned. The HTTP Host header — and TLS SNI / certificate
+# hostname verification for https — still use the original domain name, so
+# virtual hosting and cert validation behave exactly as before. Proxy mode
+# skips pinning (the proxy resolves the name remotely).
 
 
 class _PinnedHTTPConnection(http.client.HTTPConnection):
@@ -187,9 +192,52 @@ def _pinned_opener(pinned_ip: str):
         _PinnedHTTPHandler(), _PinnedHTTPSHandler())
 
 
-def _select_opener(url: str):
-    """Direct connection: validate + pin DNS. Proxy / literal-IP /
-    bypass-token URLs keep the legacy opener."""
+def _resolve_once(host: str) -> list:
+    """Single DNS resolution, deduped, resolver order preserved.
+
+    No SSRF filtering — only for the explicit-bypass path: the caller
+    accepted this exact URL via the two-layer risk confirmation, so the
+    public-IP filter is lifted, but the resolution is still done exactly
+    once and pinned (fail closed on resolution failure, never falling
+    back to an unpinned connection).
+    """
+    try:
+        infos = socket.getaddrinfo(host, None, type=socket.SOCK_STREAM)
+    except socket.gaierror as e:
+        raise security.SecurityError("主机 %r DNS 解析失败：%s" % (host, e))
+    ips, seen = [], set()
+    for info in infos:
+        ip_str = info[4][0]
+        if ip_str not in seen:
+            seen.add(ip_str)
+            ips.append(ip_str)
+    if not ips:
+        raise security.SecurityError("主机 %r 未解析到任何地址" % host)
+    return ips
+
+
+def _select_opener(url: str, bypass_token=None):
+    """Pick an opener for one request hop. Fail closed.
+
+    Direct connections get exactly ONE DNS resolution per hop:
+    ``security.resolve_validated_ips`` SSRF-validates *every* returned IP
+    and rejects the whole host when any of them is non-public; the TCP
+    dial is then pinned to that IP. DNS is never consulted again for the
+    connection, so a hostile flip after validation cannot redirect the
+    socket. Any resolution/validation failure raises SecurityError —
+    there is deliberately NO fallback to an unpinned opener (a second
+    ``is_blocked`` re-check here used to be exactly that fail-open hole:
+    under DNS rebinding it could observe a flipped answer and silently
+    downgrade to a plain connection).
+
+    A bypass token means the user explicitly accepted this exact URL via
+    the two-layer risk confirmation (``validate_url`` already consumed
+    it): the resolution is still done once and pinned, just without the
+    public-IP filter.
+
+    Proxy mode and literal-IP hosts keep the legacy opener: the proxy
+    resolves the name remotely, and numeric IPs never touch DNS.
+    """
     if _proxy_url() is not None:
         return _get_opener()
     host = urllib.parse.urlsplit(url).hostname or ""
@@ -198,11 +246,12 @@ def _select_opener(url: str):
         return _get_opener()  # literal IP: already pinned by definition
     except ValueError:
         pass
-    if security.is_blocked(url):
-        # validate_url() already ran: reaching here with a blocked URL
-        # means a bypass token was consumed — keep legacy behavior.
-        return _get_opener()
-    pinned_ip = security.resolve_validated_ips(host)[0]
+    if bypass_token:
+        pinned_ip = _resolve_once(host)[0]
+    else:
+        # Raises SecurityError on any blocked IP or resolution failure:
+        # fail closed, never fall back to an unpinned opener.
+        pinned_ip = security.resolve_validated_ips(host)[0]
     return _pinned_opener(pinned_ip)
 
 
@@ -270,15 +319,16 @@ def _request(method: str, url: str, data: bytes = None,
         t0 = time.monotonic()
         try:
             # The bypass token (if any) only applies to the first hop.
-            security.validate_url(current,
-                                  bypass_token=bypass_token if first else None)
+            tok = bypass_token if first else None
+            security.validate_url(current, bypass_token=tok)
             first = False
             h = dict(HEADERS)
             if headers:
                 h.update(headers)
             req = urllib.request.Request(current, data=body, headers=h,
                                          method=method)
-            with _select_opener(current).open(req, timeout=timeout) as r:
+            with _select_opener(current, bypass_token=tok).open(
+                    req, timeout=timeout) as r:
                 if r.status in _REDIRECTS:
                     entry["status"] = r.status
                     loc = r.headers.get("Location")
@@ -413,11 +463,12 @@ def download(url: str, dest: str, timeout: int = 60, max_redirects: int = 5,
                  "bytes": 0, "ms": 0.0, "error": None}
         t0 = time.monotonic()
         try:
-            security.validate_url(current,
-                                  bypass_token=bypass_token if first else None)
+            tok = bypass_token if first else None
+            security.validate_url(current, bypass_token=tok)
             first = False
             req = urllib.request.Request(current, headers=HEADERS)
-            with _select_opener(current).open(req, timeout=timeout) as r:
+            with _select_opener(current, bypass_token=tok).open(
+                    req, timeout=timeout) as r:
                 if r.status in _REDIRECTS:
                     entry["status"] = r.status
                     loc = r.headers.get("Location")

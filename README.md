@@ -169,14 +169,19 @@ window). The token is single-use, bound to the exact URL, expires after
 10 minutes. A blocked redirect hop needs its own confirmation. The CLI
 (`fetch` / `devtools`) runs the same two prompts interactively.
 
-**DNS rebinding — fixed for direct connections (V5.1)**: `yousj.net` now
-resolves the hostname itself, SSRF-validates *every* returned IP (one bad
-IP rejects the whole host), then pins the first valid IP and dials it
-directly. The HTTP Host header — and TLS SNI / certificate hostname
-verification for https — still use the original domain, so virtual
-hosting and cert checks behave as before. Residual gaps: proxy mode (the
-proxy resolves the name, pinning is skipped) and the explicit two-layer
-bypass flow (the user accepted that URL as-is).
+**DNS rebinding — fixed for direct connections (V5.1, fail-closed)**:
+`yousj.net` performs exactly **one** DNS resolution per request hop,
+SSRF-validates *every* returned IP (one bad IP rejects the whole host),
+then pins the first valid IP and dials it directly. There is no second
+lookup and no fallback to an unpinned connection: any validation or
+resolution failure raises `SecurityError` and the request is aborted
+(fail closed, never fail open). The HTTP Host header — and TLS SNI /
+certificate hostname verification for https — still use the original
+domain, so virtual hosting and cert checks behave as before. Residual
+gaps: proxy mode (the proxy resolves the name, pinning is skipped) and
+the explicit two-layer bypass flow (the user accepted that URL as-is;
+the single resolution is still pinned, just without the public-IP
+filter).
 
 ## AI 反馈
 
