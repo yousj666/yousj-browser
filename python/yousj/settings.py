@@ -28,6 +28,10 @@ DEFAULTS = {
     # CLI: python -m yousj config proxy http://host:port
     # (env vars http_proxy/https_proxy are honored when unset here)
     "proxy": None,
+    # Download size cap in megabytes (V5.1: CUE review — no unlimited
+    # downloads filling the disk). CLI:
+    # python -m yousj config max-download-size 500
+    "max_download_size_mb": 200,
 }
 
 

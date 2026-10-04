@@ -5,13 +5,15 @@ usage:
   python -m yousj fetch <url>           fetch & summarize
   python -m yousj search <query...>     web search via our own engine
   python -m yousj devtools <url>        open F12 on a URL
-  python -m yousj download <url> [-o file]  download a file (SSRF-checked)
+  python -m yousj download <url> [-o file] [--yes]  download a file (SSRF-checked)
+                                                   # --yes: skip oversize confirm
   python -m yousj history [n]          show recent visit history
   python -m yousj config list           show all settings
   python -m yousj config get <key>      show one setting
   python -m yousj config set <k> <v>    change a setting
   python -m yousj config engine [name|url]  switch search engine
   python -m yousj config proxy [url|off]    set HTTP(S) proxy
+  python -m yousj config max-download-size [MB]  download size cap (default 200)
 """
 import os
 import sys
@@ -135,15 +137,32 @@ def _cmd_config(argv):
                 return 1
             print("search engine: %s -> %s" % (se["name"], se["url"]))
         return 0
-    print("usage: config [list|get <k>|set <k> <v>|engine [name|url]|proxy [url|off]]",
+    if argv[0] == "max-download-size":
+        if len(argv) == 1:
+            print("%s MB" % settings.get("max_download_size_mb", 200))
+        else:
+            try:
+                mb = float(argv[1])
+            except ValueError:
+                print("error: MB must be a number", file=sys.stderr)
+                return 1
+            if mb <= 0:
+                print("error: MB must be positive", file=sys.stderr)
+                return 1
+            settings.set("max_download_size_mb", mb)
+            print("max-download-size = %s MB" % mb)
+        return 0
+    print("usage: config [list|get <k>|set <k> <v>|engine [name|url]|proxy [url|off]|max-download-size [MB]]",
           file=sys.stderr)
     return 2
 
 
 def _cmd_download(argv):
     if not argv:
-        print("usage: download <url> [-o file]", file=sys.stderr)
+        print("usage: download <url> [-o file] [--yes]", file=sys.stderr)
         return 2
+    yes = "--yes" in argv
+    argv = [a for a in argv if a != "--yes"]
     url = argv[0]
     dest = None
     if "-o" in argv:
@@ -156,6 +175,8 @@ def _cmd_download(argv):
         name = urllib.parse.urlsplit(url).path.rsplit("/", 1)[-1] or "index.html"
         dest = urllib.parse.unquote(name) or "index.html"
     dest = os.path.expanduser(dest)
+    # --yes auto-confirms oversize downloads (non-interactive otherwise).
+    on_oversize = (lambda *a: True) if yes else None
     try:
         def progress(done, total):
             if total:
@@ -164,14 +185,19 @@ def _cmd_download(argv):
                       flush=True)
             else:
                 print("\r%d bytes" % done, end="", flush=True)
-        info = _net.download(url, dest, progress=progress)
+        info = _net.download(url, dest, progress=progress,
+                             on_oversize=on_oversize)
         print("\nsaved: %s (%d bytes)" % (info["path"], info["bytes"]))
     except security.SecurityError:
         token = _cli_risky_flow(url)
         if token is None:
             return 1
-        info = _net.download(url, dest, bypass_token=token)
+        info = _net.download(url, dest, bypass_token=token,
+                             on_oversize=on_oversize)
         print("saved: %s (%d bytes)" % (info["path"], info["bytes"]))
+    except _net.OversizeDownloadError as e:
+        print("\ndownload cancelled: %s" % e, file=sys.stderr)
+        return 1
     except Exception as e:  # noqa: BLE001
         print("\ndownload failed: %s" % e, file=sys.stderr)
         return 1

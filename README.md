@@ -103,16 +103,20 @@ history.recent(10)  # [{"url", "title", "ts"}...]，存在 ~/.config/yousj/histo
 ```
 
 ```bash
-python -m yousj download <url> [-o 文件名]  # SSRF 安全校验，大文件流式落盘
+python -m yousj download <url> [-o 文件名] [--yes]  # SSRF 安全校验，大文件流式落盘（默认 200MB 软上限，超限先确认）
 python -m yousj history [n]                 # 查看访问历史
 python -m yousj config proxy [url|off]      # 设置代理
+python -m yousj config max-download-size [MB]  # 下载大小上限（默认 200）
 ```
 
 说明：
 
 - **Cookie**：标准 `http.cookiejar`（MozillaCookieJar），Secure/HttpOnly 按规范处理；`net.clear_cookies()` 登出全部站点。
 - **表单**：`doc.forms()` 列出所有表单；`fill({...})` 按 name 填值（select 会校验选项、checkbox 支持 True/False、未知字段名直接报错）；`submit()` 按 method 做 GET/POST，返回新 Document（`.url` 为最终地址）。
-- **下载**：走 `net.get` 同样的 SSRF 校验与跳转检查，但 body 流式写入磁盘（无 10MB 上限、不占内存）。
+- **下载**：走 `net.get` 同样的 SSRF 校验与跳转检查，但 body 流式写入磁盘（不占内存）。大小是**软上限**（默认 200MB，`config max-download-size <MB>` 可调），超限不直接掐断，而是先确认：
+  - 已知大小（Content-Length）超限 → 下载前问：`确定要下载吗？该文件大于 200 MB。(确认下载/取消下载)`，确认后本次不限量下完；
+  - 大小未知、中途超限 → 暂停问：`文件大小未知，已下载 X MB，是否继续？(确认下载/取消下载)`，取消则删掉已下载的部分文件。
+  - CLI 在 TTY 下直接 prompt；管道/脚本等非 TTY 默认取消并提示加 `--yes` 跳过确认；Python API 可传 `on_oversize(url, 已知大小或None, 已下载字节) → True/False` 回调自定义确认逻辑。
 - **代理**：`settings` 的 `proxy` 优先，其次环境变量；每次请求前重建 opener，生即生效。
 - **历史**：`yousj.fetch()` 与表单提交自动记录（url、title、时间戳），最多保留 1000 条。
 
@@ -165,13 +169,14 @@ window). The token is single-use, bound to the exact URL, expires after
 10 minutes. A blocked redirect hop needs its own confirmation. The CLI
 (`fetch` / `devtools`) runs the same two prompts interactively.
 
-**Known residual risk — DNS rebinding**: the check is resolve-then-validate,
-so a hostile DNS could flip public→private in the millisecond window before
-connect. Exploiting it needs attacker-controlled DNS *and* winning that race
-on every request (each hop re-validates). Closing it properly needs DNS
-pinning inside our own network layer (a bigger project, on the roadmap) —
-a rushed 20-line patch here risks worse TLS bugs than it fixes, so it's
-documented, not half-fixed.
+**DNS rebinding — fixed for direct connections (V5.1)**: `yousj.net` now
+resolves the hostname itself, SSRF-validates *every* returned IP (one bad
+IP rejects the whole host), then pins the first valid IP and dials it
+directly. The HTTP Host header — and TLS SNI / certificate hostname
+verification for https — still use the original domain, so virtual
+hosting and cert checks behave as before. Residual gaps: proxy mode (the
+proxy resolves the name, pinning is skipped) and the explicit two-layer
+bypass flow (the user accepted that URL as-is).
 
 ## AI 反馈
 

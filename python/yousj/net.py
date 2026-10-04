@@ -7,9 +7,15 @@ Response bodies are size-capped (DoS protection, gzip bombs included).
 V5: cookie persistence (MozillaCookieJar at ~/.config/yousj/cookies.txt,
 mode 600), proxy support (``yousj.settings`` ``proxy`` key or
 http_proxy/https_proxy env vars), POST, and streaming downloads.
+V5.1: downloads are size-capped (``max_download_size_mb``, default 200MB);
+direct connections use DNS pinning (see ``_select_opener``).
 """
+import http.client
 import http.cookiejar
+import ipaddress
 import os
+import socket
+import sys
 import time
 import urllib.parse
 import urllib.request
@@ -124,6 +130,82 @@ def active_proxy():
     return _proxy_url()
 
 
+# ---------------------------------------------------------------------------
+# DNS pinning (DNS-rebinding defense, direct connections only)
+# ---------------------------------------------------------------------------
+# validate_url() is resolve-then-check: between the check and the socket
+# connect, a hostile DNS could flip the answer. We close that window by
+# resolving ourselves, SSRF-validating *every* returned IP
+# (security.resolve_validated_ips), then dialing the pinned IP directly.
+# The HTTP Host header — and TLS SNI / certificate hostname verification
+# for https — still use the original domain name, so virtual hosting and
+# cert validation behave exactly as before. Proxy mode skips pinning (the
+# proxy resolves the name remotely).
+
+
+class _PinnedHTTPConnection(http.client.HTTPConnection):
+    """HTTPConnection that dials a pinned IP instead of re-resolving."""
+    _pinned_ip = None
+
+    def connect(self):
+        self.sock = socket.create_connection(
+            (self._pinned_ip, self.port), self.timeout, self.source_address)
+
+
+class _PinnedHTTPSConnection(http.client.HTTPSConnection):
+    """Same for HTTPS. SNI and cert hostname verification still use the
+    original domain (``self.host``) — only the TCP dial is pinned."""
+    _pinned_ip = None
+
+    def connect(self):
+        self.sock = socket.create_connection(
+            (self._pinned_ip, self.port), self.timeout, self.source_address)
+        # _tunnel_host is always None here: the proxy path never pins.
+        self.sock = self._context.wrap_socket(self.sock,
+                                              server_hostname=self.host)
+
+
+def _pinned_opener(pinned_ip: str):
+    """Build an opener (no redirect following, cookie jar shared) whose
+    connections dial ``pinned_ip``. Built per request — cheap."""
+    http_conn = type("_PinnedHTTPConn", (_PinnedHTTPConnection,),
+                     {"_pinned_ip": pinned_ip})
+    https_conn = type("_PinnedHTTPSConn", (_PinnedHTTPSConnection,),
+                      {"_pinned_ip": pinned_ip})
+
+    class _PinnedHTTPHandler(urllib.request.HTTPHandler):
+        def http_open(self, req):
+            return self.do_open(http_conn, req)
+
+    class _PinnedHTTPSHandler(urllib.request.HTTPSHandler):
+        def https_open(self, req):
+            return self.do_open(https_conn, req)
+
+    return urllib.request.build_opener(
+        _NoAutoRedirect(),
+        urllib.request.HTTPCookieProcessor(_jar),
+        _PinnedHTTPHandler(), _PinnedHTTPSHandler())
+
+
+def _select_opener(url: str):
+    """Direct connection: validate + pin DNS. Proxy / literal-IP /
+    bypass-token URLs keep the legacy opener."""
+    if _proxy_url() is not None:
+        return _get_opener()
+    host = urllib.parse.urlsplit(url).hostname or ""
+    try:
+        ipaddress.ip_address(host)
+        return _get_opener()  # literal IP: already pinned by definition
+    except ValueError:
+        pass
+    if security.is_blocked(url):
+        # validate_url() already ran: reaching here with a blocked URL
+        # means a bypass token was consumed — keep legacy behavior.
+        return _get_opener()
+    pinned_ip = security.resolve_validated_ips(host)[0]
+    return _pinned_opener(pinned_ip)
+
+
 # Every request made through net is recorded here for the
 # Network panel (F12). Each entry: url, method, status, bytes, ms, error.
 request_log = []
@@ -196,7 +278,7 @@ def _request(method: str, url: str, data: bytes = None,
                 h.update(headers)
             req = urllib.request.Request(current, data=body, headers=h,
                                          method=method)
-            with _get_opener().open(req, timeout=timeout) as r:
+            with _select_opener(current).open(req, timeout=timeout) as r:
                 if r.status in _REDIRECTS:
                     entry["status"] = r.status
                     loc = r.headers.get("Location")
@@ -248,16 +330,81 @@ def post(url: str, data: dict, timeout: int = 15, max_redirects: int = 5,
     return _decode(raw, headers)
 
 
+def _download_cap_bytes() -> int:
+    """Configured download size cap in bytes (settings ``max_download_size_mb``,
+    default 200MB). Invalid / non-positive values fall back to the default
+    (fail safe: never silently unlimited)."""
+    try:
+        mb = float(settings.get("max_download_size_mb", 200))
+    except (TypeError, ValueError):
+        mb = 200
+    if mb <= 0:
+        mb = 200
+    return int(mb * 1024 * 1024)
+
+
+class OversizeDownloadError(ValueError):
+    """Raised when a download exceeds the ``max_download_size_mb`` cap and
+    continuation wasn't confirmed (user cancelled, or non-interactive with
+    no ``on_oversize`` callback / ``--yes``)."""
+
+
+def _confirm_oversize(url: str, known_total, downloaded: int,
+                      cap_mb: float, on_oversize) -> bool:
+    """Ask whether an over-cap download may continue.
+
+    ``on_oversize`` (when given) is called as
+    ``on_oversize(url, known_total_or_None, downloaded_bytes)`` and must
+    return True (continue, unlimited for this download) or False (cancel).
+    Without a callback: prompt on TTY; raise :class:`OversizeDownloadError`
+    when stdin isn't interactive.
+    """
+    if on_oversize is not None:
+        return bool(on_oversize(url, known_total, downloaded))
+    if known_total is not None:
+        question = ("确定要下载吗？该文件大于 %g MB（约 %.1f MB）。"
+                    "确认下载/取消下载？[y/N] "
+                    % (cap_mb, known_total / 1048576))
+    else:
+        question = ("文件大小未知，已下载 %.1f MB，是否继续？"
+                    "确认下载/取消下载？[y/N] "
+                    % (downloaded / 1048576))
+    if sys.stdin.isatty():
+        ans = input(question).strip().lower()
+        return ans in ("y", "yes", "确认", "确认下载")
+    raise OversizeDownloadError(
+        "下载超过 %gMB 上限，无法确认（非交互模式）。"
+        "加 --yes 跳过确认，或用 `config max-download-size` 调整上限。"
+        % cap_mb)
+
+
 def download(url: str, dest: str, timeout: int = 60, max_redirects: int = 5,
-             bypass_token=None, progress=None) -> dict:
+             bypass_token=None, progress=None, on_oversize=None) -> dict:
     """Download a URL to a file (streamed in chunks, SSRF-checked).
 
-    Unlike :func:`get`, there is no 10MB cap — the body is streamed
-    straight to disk so large files don't eat RAM. ``progress`` (optional)
-    is called as ``progress(bytes_done, total_or_None)``.
+    Unlike :func:`get`, the body is streamed straight to disk so large
+    files don't eat RAM. The total size is soft-capped by the
+    ``max_download_size_mb`` setting (default 200MB,
+    ``python -m yousj config max-download-size <MB>``):
+
+    - server announces a larger Content-Length → ask *before* downloading:
+      ``确定要下载吗？该文件大于 200 MB。(确认下载/取消下载)``
+    - size unknown and the stream passes the cap → pause and ask:
+      ``文件大小未知，已下载 X MB，是否继续？(确认下载/取消下载)``
+
+    Confirmation comes from ``on_oversize`` when given
+    (``on_oversize(url, known_total_or_None, downloaded_bytes)`` → True =
+    continue / False = cancel); otherwise TTY prompts interactively, and
+    non-TTY raises :class:`OversizeDownloadError`. A cancelled download
+    deletes any partial file.
+
+    ``progress`` (optional) is called as ``progress(bytes_done,
+    total_or_None)``.
 
     Returns ``{"path": dest, "bytes": n, "url": final_url}``.
     """
+    cap = _download_cap_bytes()
+    cap_mb = cap / 1048576
     current = url
     hops = 0
     first = True
@@ -270,7 +417,7 @@ def download(url: str, dest: str, timeout: int = 60, max_redirects: int = 5,
                                   bypass_token=bypass_token if first else None)
             first = False
             req = urllib.request.Request(current, headers=HEADERS)
-            with _get_opener().open(req, timeout=timeout) as r:
+            with _select_opener(current).open(req, timeout=timeout) as r:
                 if r.status in _REDIRECTS:
                     entry["status"] = r.status
                     loc = r.headers.get("Location")
@@ -283,16 +430,41 @@ def download(url: str, dest: str, timeout: int = 60, max_redirects: int = 5,
                     continue
                 total = r.headers.get("Content-Length")
                 total = int(total) if total and total.isdigit() else None
+                unlimited = False
+                if total is not None and total > cap:
+                    if not _confirm_oversize(current, total, 0, cap_mb,
+                                             on_oversize):
+                        raise OversizeDownloadError(
+                            "下载已取消：文件约 %.1f MB，超过 %gMB 上限。"
+                            % (total / 1048576, cap_mb))
+                    unlimited = True  # confirmed: no cap for this download
                 done = 0
-                with open(dest, "wb") as f:
-                    while True:
-                        chunk = r.read(65536)
-                        if not chunk:
-                            break
-                        f.write(chunk)
-                        done += len(chunk)
-                        if progress:
-                            progress(done, total)
+                tmp = dest + ".part"
+                try:
+                    with open(tmp, "wb") as f:
+                        while True:
+                            chunk = r.read(65536)
+                            if not chunk:
+                                break
+                            f.write(chunk)
+                            done += len(chunk)
+                            if not unlimited and done > cap:
+                                if not _confirm_oversize(current, None, done,
+                                                         cap_mb, on_oversize):
+                                    raise OversizeDownloadError(
+                                        "下载已取消：已下载 %.1f MB，"
+                                        "超过 %gMB 上限。"
+                                        % (done / 1048576, cap_mb))
+                                unlimited = True
+                            if progress:
+                                progress(done, total)
+                    os.replace(tmp, dest)
+                except Exception:
+                    try:
+                        os.remove(tmp)
+                    except OSError:
+                        pass
+                    raise
                 entry["status"] = r.status
                 entry["bytes"] = done
                 return {"path": dest, "bytes": done, "url": current}

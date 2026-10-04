@@ -37,17 +37,15 @@ intranet)::
 
 Known residual risks (documented honestly, not silently):
 
-- **DNS rebinding**: the check is resolve-then-validate, so an attacker who
-  controls a domain's DNS could flip it from a public IP to a private IP in
-  the millisecond window between validation and connection. Exploiting this
-  needs attacker-controlled DNS *and* winning that race on *every* request
-  (each redirect hop re-validates), and the target must be an intranet HTTP
-  service that answers a plain GET usefully. Fully closing it needs DNS
-  pinning inside our own network layer (what Chromium does with its
-  HostResolver) — and doing that half-correctly (custom TLS SNI / cert
-  verification, proxy interplay) risks introducing worse bugs than it fixes.
-  It stays on the roadmap for the dedicated network layer; it is not
-  something a 20-line patch can safely claim to solve.
+- **DNS rebinding**: mostly closed for direct connections. Since V5.1,
+  ``yousj.net`` resolves the hostname itself, SSRF-validates *every*
+  returned IP (one bad IP rejects the whole host), then pins the first
+  valid IP and dials it directly while keeping the original Host header
+  (and TLS SNI / certificate hostname verification for https). DNS is
+  never consulted again for that connection, so a hostile DNS flip after
+  validation can't redirect the socket. Residual gaps: proxy mode (the
+  proxy resolves the name, pinning is skipped) and the explicit
+  two-layer-bypass flow (the user accepted the URL as-is).
 """
 import ipaddress
 import secrets
@@ -202,3 +200,42 @@ def validate_url(url: str, bypass_token=None) -> str:
             "confirm_visit(url)，再用 token 调用 "
             "net.get(url, bypass_token=token)" % reason)
     return url
+
+
+def is_blocked(url: str) -> bool:
+    """True when :func:`validate_url` would reject this URL (no bypass)."""
+    blocked, _ = _assess(url)
+    return blocked
+
+
+def resolve_validated_ips(host: str) -> list:
+    """Resolve ``host`` and SSRF-validate **every** returned IP.
+
+    This is the DNS-rebinding defense: ``yousj.net`` calls it after
+    :func:`validate_url`, then dials one of the returned IPs directly, so
+    DNS is never consulted again for that connection. One blocked IP
+    rejects the whole host (fail closed).
+
+    Returns the validated IP strings (deduped, resolver order preserved).
+    Raises :class:`SecurityError` when any IP is blocked or nothing
+    resolves. Honors the ``allow_private_urls`` opt-out (resolves without
+    filtering, still pinned).
+    """
+    try:
+        infos = socket.getaddrinfo(host, None, type=socket.SOCK_STREAM)
+    except socket.gaierror as e:
+        raise SecurityError("主机 %r DNS 解析失败：%s" % (host, e))
+    ips = []
+    seen = set()
+    for info in infos:
+        ip_str = info[4][0]
+        if ip_str in seen:
+            continue
+        seen.add(ip_str)
+        if not _allow_private() and _blocked_ip(ipaddress.ip_address(ip_str)):
+            raise SecurityError(
+                "主机 %r 解析到非公网 IP %s" % (host, ip_str))
+        ips.append(ip_str)
+    if not ips:
+        raise SecurityError("主机 %r 未解析到任何地址" % host)
+    return ips
