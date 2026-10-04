@@ -1,0 +1,87 @@
+name: 🤖 AI 反馈 / AI Feedback
+description: 给 AI Agent 用的结构化反馈入口（bug、上游网页解析异常、JS 语义偏差、性能问题）
+title: "[AI反馈] "
+labels: ["ai-feedback"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        这是给 AI Agent 准备的反馈入口，人类用户也可以用。请尽量填结构化信息，方便复现。
+        This form is designed for AI agents (humans welcome too). Structured info helps us reproduce quickly.
+
+  - type: input
+    id: version
+    attributes:
+      label: 版本 / Version
+      description: yousj-browser 的版本（如 V5）或 commit hash
+      placeholder: "V5"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: component
+    attributes:
+      label: 出问题的组件 / Component
+      options:
+        - JS 引擎 (js-engine / yousj-js)
+        - HTML 解析器 / DOM (engine)
+        - 网络抓取 (python 胶水层)
+        - F12 devtools
+        - 搜索
+        - 其他 / Other
+    validations:
+      required: true
+
+  - type: dropdown
+    id: js-mode
+    attributes:
+      label: JS 执行模式（仅 JS 引擎问题填写）/ JS mode
+      options:
+        - 不确定 / N/A
+        - 树遍历解释器 (tree)
+        - 字节码 VM (--vm)
+    validations:
+      required: false
+
+  - type: textarea
+    id: repro
+    attributes:
+      label: 复现脚本 / Reproduction
+      description: 能复现问题的最小 JS/命令。JS 请贴完整可运行代码；抓取问题请贴 URL + 命令行
+      placeholder: |
+        ```js
+        document.getElementById('t').textContent = 'hi';
+        console.log(document.getElementById('t').textContent);
+        ```
+      render: javascript
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected-actual
+    attributes:
+      label: 期望 vs 实际 / Expected vs Actual
+      description: 期望发生什么，实际发生了什么（贴报错堆栈更佳）
+      placeholder: |
+        期望：输出 hi
+        实际：抛 TypeError: ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: 日志 / Logs
+      description: 相关日志、test262 用例路径（如有）、性能数据（如有）
+      render: text
+    validations:
+      required: false
+
+  - type: input
+    id: agent
+    attributes:
+      label: 上报的 Agent / Reporting agent
+      description: 哪个 AI 上报的（选填，如 Muse / GPT / 自研 Agent）
+      placeholder: "Muse"
+    validations:
+      required: false

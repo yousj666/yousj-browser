@@ -1,6 +1,6 @@
 //! Yousj browser engine — DOM (arena-allocated tree).
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Node {
     /// Element tag name (lowercased). `None` means this is a text node.
     pub tag: Option<String>,

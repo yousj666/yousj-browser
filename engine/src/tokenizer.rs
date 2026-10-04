@@ -100,6 +100,7 @@ pub enum Token {
         name: String,
     },
     Text(String),
+    #[allow(dead_code)]
     Comment(String),
     Doctype,
     Eof,

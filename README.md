@@ -62,9 +62,63 @@ Parser fixes in v0.2: no more doubled `<html>` (real tag reuses the implied
 one, attributes merged); character entities now decoded in attribute values
 too (`href="/?x=1&amp;y=2"`); new `yousj_anchors` / `yousj_dom_tree` FFI.
 
+## V5 — 自研 JS 引擎 yousj-js 公开
+
+从零手写的 JavaScript 引擎（Rust，约 2 万行），此前为内部项目，V5 起正式公开并默认集成：
+
+- **解释器 + 字节码 VM**：树遍历解释器与栈式 VM（约 70 种指令）双执行模式，可切换
+- **语言特性**：生成器（含 `yield*`）、async/await、async 生成器、解构赋值（~90%）、类（含私有字段/静态块）、Proxy（get/set/has/apply/construct）、模板字面量、展开/剩余参数
+- **标准库**：Map/Set/WeakMap/WeakSet、ArrayBuffer + TypedArray + DataView、Date、Intl.NumberFormat/DateTimeFormat
+- **Web API**：WebSocket、Worker、localStorage/sessionStorage、URL/URLSearchParams、TextEncoder/Decoder、Blob、FormData、atob/btoa、setInterval
+- **合规**：test262 `test/language` 通过率 36.6%（16,022/45,907），自有测试 447 全过
+- **性能**：字符串驻留 + Fx 哈希，类反复创建场景峰值内存降 274 倍；调用密集型基准优化后快约 50%
+
+构建（含 JS 引擎）：
+
+```bash
+./build-js.sh   # 编译 js-engine 为 rlib，再以 --features js 编译 engine
+```
+
+JS 可直接操作实时 DOM（`document.getElementById('t').textContent = 'hi'` 立即可见），支持事件监听与 `fetch`。
+
+## V5 新功能：会话 / 表单 / 下载 / 代理 / 历史
+
+```python
+from yousj import fetch
+
+# 登录会话（cookie 持久化）：登一次，下次直接用
+# cookie 存在 ~/.config/yousj/cookies.txt（600 权限），自动加载/保存
+doc = fetch("https://example.com/login")
+form = doc.forms()[0]
+home = form.fill({"user": "alice", "pass": "s3cret"}).submit()  # GET/POST 自动按 method
+
+# 代理
+from yousj import settings
+settings.set_proxy("http://127.0.0.1:8080")  # 未设置时走 http_proxy/https_proxy 环境变量
+settings.clear_proxy()
+
+# 历史记录
+from yousj import history
+history.recent(10)  # [{"url", "title", "ts"}...]，存在 ~/.config/yousj/history.jsonl
+```
+
+```bash
+python -m yousj download <url> [-o 文件名]  # SSRF 安全校验，大文件流式落盘
+python -m yousj history [n]                 # 查看访问历史
+python -m yousj config proxy [url|off]      # 设置代理
+```
+
+说明：
+
+- **Cookie**：标准 `http.cookiejar`（MozillaCookieJar），Secure/HttpOnly 按规范处理；`net.clear_cookies()` 登出全部站点。
+- **表单**：`doc.forms()` 列出所有表单；`fill({...})` 按 name 填值（select 会校验选项、checkbox 支持 True/False、未知字段名直接报错）；`submit()` 按 method 做 GET/POST，返回新 Document（`.url` 为最终地址）。
+- **下载**：走 `net.get` 同样的 SSRF 校验与跳转检查，但 body 流式写入磁盘（无 10MB 上限、不占内存）。
+- **代理**：`settings` 的 `proxy` 优先，其次环境变量；每次请求前重建 opener，生即生效。
+- **历史**：`yousj.fetch()` 与表单提交自动记录（url、title、时间戳），最多保留 1000 条。
+
 ## Roadmap
 
-- v0.3: embed QuickJS, run page scripts headlessly (+ `Console` JS eval)
+- ~~v0.3: embed QuickJS~~ → 已被自研 yousj-js 取代（见上）
 - v0.4: CSS parsing + box layout (towards a visible browser)
 - Later: UI shell
 
@@ -118,6 +172,12 @@ on every request (each hop re-validates). Closing it properly needs DNS
 pinning inside our own network layer (a bigger project, on the roadmap) —
 a rushed 20-line patch here risks worse TLS bugs than it fixes, so it's
 documented, not half-fixed.
+
+## AI 反馈
+
+AI Agent 发现 bug、JS 语义偏差或解析异常，请走结构化反馈入口：
+[🤖 AI 反馈](.github/ISSUE_TEMPLATE/ai-feedback.yml)（Issues → New issue → AI 反馈）。
+填上版本、复现脚本、期望 vs 实际即可，人类用户同样欢迎使用。
 
 ## License
 

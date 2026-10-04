@@ -6,6 +6,8 @@ Performance); swappable search engine with web search through our own engine.
 """
 from .engine import Document, parse
 from . import devtools
+from . import forms
+from . import history
 from . import net
 from . import search as _search_mod
 from . import security
@@ -16,10 +18,14 @@ def fetch(url: str, timeout: int = 15, bypass_token=None) -> Document:
     """Fetch a URL and return a parsed Document.
 
     ``bypass_token`` comes from ``security.confirm_visit`` after the
-    two-layer risk confirmation for blocked URLs.
+    two-layer risk confirmation for blocked URLs. The visit is recorded
+    in the persistent history; ``doc.url`` is set to the final URL.
     """
     html = net.get(url, timeout=timeout, bypass_token=bypass_token)
-    return parse(html)
+    doc = parse(html)
+    doc.url = url
+    history.record(url, doc.title())
+    return doc
 
 
 def search(query: str, max_results: int = 10, engine_name=None,
@@ -30,5 +36,5 @@ def search(query: str, max_results: int = 10, engine_name=None,
 
 
 __all__ = ["fetch", "parse", "search", "Document", "devtools", "net",
-           "security", "settings"]
-__version__ = "0.2.2"
+           "security", "settings", "forms", "history"]
+__version__ = "5.0"

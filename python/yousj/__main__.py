@@ -5,14 +5,20 @@ usage:
   python -m yousj fetch <url>           fetch & summarize
   python -m yousj search <query...>     web search via our own engine
   python -m yousj devtools <url>        open F12 on a URL
+  python -m yousj download <url> [-o file]  download a file (SSRF-checked)
+  python -m yousj history [n]          show recent visit history
   python -m yousj config list           show all settings
   python -m yousj config get <key>      show one setting
   python -m yousj config set <k> <v>    change a setting
   python -m yousj config engine [name|url]  switch search engine
+  python -m yousj config proxy [url|off]    set HTTP(S) proxy
 """
+import os
 import sys
+import urllib.parse
 
-from . import devtools, fetch, search as _search, security, settings
+from . import devtools, fetch, history as _history, net as _net
+from . import search as _search, security, settings
 
 
 def _cli_risky_flow(url):
@@ -96,6 +102,20 @@ def _cmd_config(argv):
             print("%s = %s" % (k, v))
         print("presets: %s" % ", ".join(settings.list_search_engines()))
         return 0
+    if argv[0] == "proxy":
+        if len(argv) == 1:
+            print(settings.get_proxy() or "(direct)")
+        elif argv[1] == "off":
+            settings.clear_proxy()
+            print("proxy cleared (direct connection)")
+        else:
+            try:
+                settings.set_proxy(argv[1])
+            except ValueError as e:
+                print("error: %s" % e, file=sys.stderr)
+                return 1
+            print("proxy = %s" % settings.get_proxy())
+        return 0
     if argv[0] == "get" and len(argv) == 2:
         print(settings.get(argv[1]))
         return 0
@@ -115,9 +135,67 @@ def _cmd_config(argv):
                 return 1
             print("search engine: %s -> %s" % (se["name"], se["url"]))
         return 0
-    print("usage: config [list|get <k>|set <k> <v>|engine [name|url]]",
+    print("usage: config [list|get <k>|set <k> <v>|engine [name|url]|proxy [url|off]]",
           file=sys.stderr)
     return 2
+
+
+def _cmd_download(argv):
+    if not argv:
+        print("usage: download <url> [-o file]", file=sys.stderr)
+        return 2
+    url = argv[0]
+    dest = None
+    if "-o" in argv:
+        i = argv.index("-o")
+        if i + 1 >= len(argv):
+            print("error: -o needs a filename", file=sys.stderr)
+            return 2
+        dest = argv[i + 1]
+    if dest is None:
+        name = urllib.parse.urlsplit(url).path.rsplit("/", 1)[-1] or "index.html"
+        dest = urllib.parse.unquote(name) or "index.html"
+    dest = os.path.expanduser(dest)
+    try:
+        def progress(done, total):
+            if total:
+                pct = done * 100 // total
+                print("\r%d/%d bytes (%d%%)" % (done, total, pct), end="",
+                      flush=True)
+            else:
+                print("\r%d bytes" % done, end="", flush=True)
+        info = _net.download(url, dest, progress=progress)
+        print("\nsaved: %s (%d bytes)" % (info["path"], info["bytes"]))
+    except security.SecurityError:
+        token = _cli_risky_flow(url)
+        if token is None:
+            return 1
+        info = _net.download(url, dest, bypass_token=token)
+        print("saved: %s (%d bytes)" % (info["path"], info["bytes"]))
+    except Exception as e:  # noqa: BLE001
+        print("\ndownload failed: %s" % e, file=sys.stderr)
+        return 1
+    return 0
+
+
+def _cmd_history(argv):
+    n = 20
+    if argv:
+        try:
+            n = max(1, int(argv[0]))
+        except ValueError:
+            print("usage: history [n]", file=sys.stderr)
+            return 2
+    items = _history.recent(n)
+    if not items:
+        print("(no history yet)")
+        return 0
+    import datetime
+    for it in items:
+        ts = datetime.datetime.fromtimestamp(it["ts"]).strftime("%m-%d %H:%M")
+        title = it["title"] or "(no title)"
+        print("%s  %s\n    %s" % (ts, title, it["url"]))
+    return 0
 
 
 def main(argv=None) -> int:
@@ -134,9 +212,13 @@ def main(argv=None) -> int:
         return _cmd_devtools(argv[1])
     if cmd == "config":
         return _cmd_config(argv[1:])
+    if cmd == "download":
+        return _cmd_download(argv[1:])
+    if cmd == "history":
+        return _cmd_history(argv[1:])
     if len(argv) == 1 and "://" in argv[0]:
         return _cmd_fetch(argv[0])  # v0.1 style: bare URL
-    print("usage: python -m yousj <url>|fetch|search|devtools|config ...",
+    print("usage: python -m yousj <url>|fetch|search|devtools|download|history|config ...",
           file=sys.stderr)
     return 2
 

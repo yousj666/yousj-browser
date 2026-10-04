@@ -24,6 +24,10 @@ DEFAULTS = {
     # of the presets (duckduckgo serves a bot challenge, google serves
     # a consent page to simple clients). Switch anytime in settings.
     "search_engine": "brave",
+    # HTTP(S) proxy URL, e.g. "http://127.0.0.1:8080". None = direct.
+    # CLI: python -m yousj config proxy http://host:port
+    # (env vars http_proxy/https_proxy are honored when unset here)
+    "proxy": None,
 }
 
 
@@ -102,3 +106,25 @@ def get_search_engine() -> dict:
         return {"name": "custom", "url": url}
     return {"name": name,
             "url": PRESET_ENGINES.get(name, PRESET_ENGINES["duckduckgo"])}
+
+
+def set_proxy(url: str) -> str:
+    """Set the HTTP(S) proxy, e.g. ``set_proxy("http://127.0.0.1:8080")``.
+
+    Takes effect on the next request (``yousj.net`` rebuilds its opener).
+    """
+    url = (url or "").strip()
+    if url and not url.startswith(("http://", "https://")):
+        raise ValueError("proxy URL must start with http:// or https://")
+    set("proxy", url or None)
+    return get("proxy")
+
+
+def clear_proxy() -> None:
+    """Back to direct connection (env vars still honored if set)."""
+    set("proxy", None)
+
+
+def get_proxy():
+    """Configured proxy URL, or None."""
+    return get("proxy")
