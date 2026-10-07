@@ -3,103 +3,95 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Yousj Browser — 为 AI 而生的开源浏览器</title>
+<title>Yousj Browser — 从零编写的浏览器引擎</title>
 <style>
+:root{--ink:#1a1a1a;--paper:#faf9f7;--accent:#c2410c;--muted:#6b7280;--line:#e5e0d8;--code-bg:#f3f1ec}
 *{margin:0;padding:0;box-sizing:border-box}
-body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"PingFang SC","Microsoft YaHei",sans-serif;background:#0d1117;color:#c9d1d9;line-height:1.7}
-.hero{background:linear-gradient(135deg,#0d1117 0%,#161b22 50%,#0d1117 100%);text-align:center;padding:80px 20px 60px;border-bottom:1px solid #21262d}
-.hero h1{font-size:3em;color:#fff;margin-bottom:10px;letter-spacing:2px}
-.hero h1 span{color:#58a6ff}
-.hero p{font-size:1.2em;color:#8b949e;max-width:600px;margin:0 auto 30px}
-.btn{display:inline-block;background:#238636;color:#fff;padding:12px 32px;border-radius:8px;font-size:1.1em;text-decoration:none;margin:5px;transition:background .2s}
-.btn:hover{background:#2ea043}
-.btn-outline{background:transparent;border:1px solid #30363d;color:#58a6ff}
-.btn-outline:hover{background:#161b22}
-.container{max-width:900px;margin:0 auto;padding:40px 20px}
-h2{color:#fff;font-size:1.8em;margin:40px 0 20px;text-align:center}
-.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:20px;margin:20px 0}
-.card{background:#161b22;border:1px solid #30363d;border-radius:10px;padding:25px}
-.card h3{color:#58a6ff;margin-bottom:10px;font-size:1.2em}
-.card p{color:#8b949e;font-size:.95em}
-.badges{text-align:center;margin:20px 0}
-.badge{display:inline-block;background:#161b22;border:1px solid #30363d;border-radius:20px;padding:6px 16px;margin:5px;font-size:.9em;color:#8b949e}
-footer{text-align:center;padding:40px 20px;border-top:1px solid #21262d;color:#8b949e;font-size:.9em}
-footer a{color:#58a6ff}
-code{background:#161b22;padding:2px 8px;border-radius:4px;font-size:.9em;color:#79c0ff}
-pre{background:#161b22;border:1px solid #30363d;border-radius:8px;padding:20px;overflow-x:auto;margin:20px 0}
-pre code{background:none;padding:0}
+body{font-family:"Source Serif 4",Georgia,"Songti SC","SimSun",serif;background:var(--paper);color:var(--ink);line-height:1.8;font-size:17px}
+.wrap{max-width:680px;margin:0 auto;padding:0 24px}
+header{padding:56px 0 32px;border-bottom:2px solid var(--ink)}
+.kicker{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:13px;letter-spacing:.15em;text-transform:uppercase;color:var(--accent);margin-bottom:16px}
+h1{font-size:2.6em;line-height:1.15;font-weight:700;letter-spacing:-.01em;margin-bottom:12px}
+.lede{font-size:1.15em;color:var(--muted);max-width:34em}
+.meta{display:flex;gap:16px;margin-top:20px;font-family:ui-monospace,Menlo,monospace;font-size:13px;color:var(--muted);flex-wrap:wrap}
+.meta a{color:var(--accent);text-decoration:none;border-bottom:1px solid var(--accent)}
+section{padding:36px 0;border-bottom:1px solid var(--line)}
+section:last-of-type{border-bottom:none}
+h2{font-size:1.3em;margin-bottom:16px;font-weight:700}
+h2 .n{font-family:ui-monospace,Menlo,monospace;font-size:.75em;color:var(--accent);margin-right:8px}
+p{margin-bottom:14px}
+ul{margin:0 0 14px 1.2em}
+li{margin-bottom:8px}
+li strong{font-weight:700}
+code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.88em;background:var(--code-bg);padding:2px 6px;border-radius:3px}
+pre{background:#1a1a1a;color:#e8e6e1;border-radius:6px;padding:20px;overflow-x:auto;margin:16px 0;font-size:14px;line-height:1.6}
+pre code{background:none;padding:0;color:inherit}
+.spec{display:grid;grid-template-columns:120px 1fr;gap:8px 16px;font-size:.95em;margin:16px 0}
+.spec dt{font-family:ui-monospace,Menlo,monospace;font-size:.85em;color:var(--muted);padding-top:2px}
+.spec dd{margin:0}
+a{color:var(--accent)}
+footer{padding:32px 0 56px;color:var(--muted);font-size:.9em}
+footer .wrap{display:flex;justify-content:space-between;flex-wrap:wrap;gap:12px}
+@media(max-width:600px){h1{font-size:2em}.spec{grid-template-columns:1fr}}
 </style>
 </head>
 <body>
 
-<div class="hero">
-<h1>Yousj <span>Browser</span></h1>
-<p>从零编写的开源浏览器引擎<br>Python + C + Rust 三语言架构，为 AI 而生</p>
-<a class="btn" href="https://github.com/yousj666/yousj-browser">GitHub 仓库</a>
-<a class="btn btn-outline" href="https://github.com/yousj666/yousj-browser/releases">下载 Releases</a>
-<div class="badges">
-<span class="badge">MIT 开源</span>
-<span class="badge">自研 JS 引擎</span>
-<span class="badge">内存 &lt; Chrome</span>
-<span class="badge">AI 优先</span>
+<header>
+<div class="wrap">
+<div class="kicker">Open Source · MIT</div>
+<h1>Yousj Browser</h1>
+<p class="lede">一个从零编写的浏览器引擎。Python + C + Rust，不依赖 Chromium，为 AI 而生，也为想知道浏览器到底怎么工作的人。</p>
+<div class="meta">
+<span><a href="https://github.com/yousj666/yousj-browser">github.com/yousj666/yousj-browser</a></span>
+<span>v5.2</span>
+<span>Python · C · Rust</span>
 </div>
 </div>
+</header>
 
-<div class="container">
+<div class="wrap">
 
-<h2>为什么是 Yousj Browser？</h2>
-<div class="grid">
-<div class="card">
-<h3>🔒 安全优先</h3>
-<p>yousj.security 默认拦截非 http(s)、私有 IP、回环地址与云元数据。每跳跳转独立校验，fail closed。</p>
-</div>
-<div class="card">
-<h3>⚡ 轻量高效</h3>
-<p>目标内存占用显著低于 Chrome。先做给 AI 用的无头版本，拒绝臃肿。</p>
-</div>
-<div class="card">
-<h3>🛠️ 自研 JS 引擎</h3>
-<p>内置从零编写的 JavaScript 引擎（js-engine），V5 已公开，不依赖 V8。</p>
-</div>
-<div class="card">
-<h3>🤖 AI 友好</h3>
-<p>五面板 F12 DevTools 专为 AI 抓取设计，AI 反馈入口一应俱全。</p>
-</div>
-<div class="card">
-<h3>🌐 实用功能</h3>
-<p>Cookie 持久化、表单自动填写、文件下载、代理支持、历史记录。</p>
-</div>
-<div class="card">
-<h3>📦 开源开放</h3>
-<p>内核 MIT 协议开源，欢迎提 Issue 和 PR，路线图公开透明。</p>
-</div>
-</div>
+<section>
+<h2><span class="n">01</span>它是什么</h2>
+<p>不是 Chromium 套壳，不是 Electron 打包。Yousj Browser 的网络、安全、JS 引擎都是自己写的。目标很直接：内存占用比 Chrome 低一大截，先给 AI 当无头浏览器用。</p>
+<dl class="spec">
+<dt>内核</dt><dd>Python + C + Rust 三语言，MIT 开源</dd>
+<dt>JS 引擎</dt><dd>自研 <code>js-engine</code>，V5 已公开，不依赖 V8</dd>
+<dt>安全</dt><dd><code>yousj.security</code> 默认拦截私有 IP、回环地址、云元数据；每跳跳转独立校验，fail closed</dd>
+<dt>体积</dt><dd><code>net.get</code> 响应体上限 10MB；DNS pin 防泄漏</dd>
+</dl>
+</section>
 
-<h2>快速开始</h2>
+<section>
+<h2><span class="n">02</span>为 AI 做的东西</h2>
+<ul>
+<li><strong>五面板 DevTools</strong> —— 不是给人看的，是给 AI 抓取用的：DOM、网络、存储、控制台，外加一个 AI 反馈入口。</li>
+<li><strong>表单填写 / 文件下载 / 代理 / 历史记录 / Cookie 持久化</strong> —— 无头场景该有的都有。</li>
+<li><strong>默认搜索引擎 Brave</strong> —— 不跟踪的那种。</li>
+</ul>
+</section>
+
+<section>
+<h2><span class="n">03</span>上手</h2>
 <pre><code>git clone https://github.com/yousj666/yousj-browser.git
-cd yousj-browser</code></pre>
+cd yousj-browser
+# 读 README，按你的平台构建</code></pre>
+<p>遇到问题直接提 <a href="https://github.com/yousj666/yousj-browser/issues">Issue</a>，路线图公开，进度透明。</p>
+</section>
 
-<h2>版本</h2>
-<div class="grid">
-<div class="card">
-<h3>V5</h3>
-<p>js-engine 公开、AI 反馈入口、cookie 持久化、表单填写、文件下载、代理、历史记录</p>
-</div>
-<div class="card">
-<h3>V5.2</h3>
-<p>DNS pin 防护，修复 fail-open 漏洞</p>
-</div>
-</div>
-
-<div style="text-align:center;margin:40px 0">
-<a class="btn" href="https://github.com/yousj666/yousj-browser">去 GitHub 看看 ⭐</a>
-</div>
+<section>
+<h2><span class="n">04</span>人用版</h2>
+<p>在做了。基于 Supermium（Chromium 分支）换壳，保留 Manifest V2，完整版 uBlock Origin 能装。Windows 一键打包脚本开发中——沙箱里编不出 EXE，得在 Windows 上跑。</p>
+</section>
 
 </div>
 
 <footer>
-<p><a href="https://github.com/yousj666/yousj-browser">github.com/yousj666/yousj-browser</a></p>
-<p style="margin-top:10px">© 2026 Yousj Browser Project · MIT License</p>
+<div class="wrap">
+<span>© 2026 Yousj Browser · MIT</span>
+<span><a href="https://github.com/yousj666/yousj-browser">GitHub 仓库 →</a></span>
+</div>
 </footer>
 
 </body>
