@@ -3,71 +3,104 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Yousj Browser - 开源浏览器引擎</title>
+<title>Yousj Browser — 为 AI 而生的开源浏览器</title>
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
-body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;background:#0d1117;color:#c9d1d9;line-height:1.6}
-.container{max-width:800px;margin:0 auto;padding:60px 20px}
-h1{font-size:2.5em;color:#58a6ff;margin-bottom:10px}
-.subtitle{font-size:1.2em;color:#8b949e;margin-bottom:40px}
-h2{color:#58a6ff;margin:30px 0 15px;font-size:1.5em}
-p{margin-bottom:15px}
-a{color:#58a6ff;text-decoration:none}
-a:hover{text-decoration:underline}
-.badge{display:inline-block;background:#161b22;border:1px solid #30363d;border-radius:6px;padding:5px 12px;margin:5px;font-size:0.9em}
-.features{display:grid;grid-template-columns:1fr 1fr;gap:15px;margin:20px 0}
-.feature{background:#161b22;border:1px solid #30363d;border-radius:8px;padding:20px}
-.feature h3{color:#58a6ff;margin-bottom:10px}
-footer{margin-top:50px;padding-top:20px;border-top:1px solid #30363d;color:#8b949e;font-size:0.9em}
+body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"PingFang SC","Microsoft YaHei",sans-serif;background:#0d1117;color:#c9d1d9;line-height:1.7}
+.hero{background:linear-gradient(135deg,#0d1117 0%,#161b22 50%,#0d1117 100%);text-align:center;padding:80px 20px 60px;border-bottom:1px solid #21262d}
+.hero h1{font-size:3em;color:#fff;margin-bottom:10px;letter-spacing:2px}
+.hero h1 span{color:#58a6ff}
+.hero p{font-size:1.2em;color:#8b949e;max-width:600px;margin:0 auto 30px}
+.btn{display:inline-block;background:#238636;color:#fff;padding:12px 32px;border-radius:8px;font-size:1.1em;text-decoration:none;margin:5px;transition:background .2s}
+.btn:hover{background:#2ea043}
+.btn-outline{background:transparent;border:1px solid #30363d;color:#58a6ff}
+.btn-outline:hover{background:#161b22}
+.container{max-width:900px;margin:0 auto;padding:40px 20px}
+h2{color:#fff;font-size:1.8em;margin:40px 0 20px;text-align:center}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:20px;margin:20px 0}
+.card{background:#161b22;border:1px solid #30363d;border-radius:10px;padding:25px}
+.card h3{color:#58a6ff;margin-bottom:10px;font-size:1.2em}
+.card p{color:#8b949e;font-size:.95em}
+.badges{text-align:center;margin:20px 0}
+.badge{display:inline-block;background:#161b22;border:1px solid #30363d;border-radius:20px;padding:6px 16px;margin:5px;font-size:.9em;color:#8b949e}
+footer{text-align:center;padding:40px 20px;border-top:1px solid #21262d;color:#8b949e;font-size:.9em}
+footer a{color:#58a6ff}
+code{background:#161b22;padding:2px 8px;border-radius:4px;font-size:.9em;color:#79c0ff}
+pre{background:#161b22;border:1px solid #30363d;border-radius:8px;padding:20px;overflow-x:auto;margin:20px 0}
+pre code{background:none;padding:0}
 </style>
 </head>
 <body>
-<div class="container">
-<h1>Yousj Browser</h1>
-<p class="subtitle">从零编写的开源浏览器引擎 · Python + C + Rust</p>
 
-<div>
+<div class="hero">
+<h1>Yousj <span>Browser</span></h1>
+<p>从零编写的开源浏览器引擎<br>Python + C + Rust 三语言架构，为 AI 而生</p>
+<a class="btn" href="https://github.com/yousj666/yousj-browser">GitHub 仓库</a>
+<a class="btn btn-outline" href="https://github.com/yousj666/yousj-browser/releases">下载 Releases</a>
+<div class="badges">
 <span class="badge">MIT 开源</span>
-<span class="badge">Python</span>
-<span class="badge">C</span>
-<span class="badge">Rust</span>
 <span class="badge">自研 JS 引擎</span>
+<span class="badge">内存 &lt; Chrome</span>
+<span class="badge">AI 优先</span>
+</div>
 </div>
 
-<h2>项目简介</h2>
-<p>Yousj Browser 是一个从零开始编写的浏览器内核项目，目标是打造内存占用低于 Chrome 的轻量级浏览器。项目采用 Python + C + Rust 三语言架构，内核部分以 MIT 协议开源。</p>
+<div class="container">
 
-<h2>核心特性</h2>
-<div class="features">
-<div class="feature">
-<h3>🔒 安全设计</h3>
-<p>yousj.security 拦截非 http(s)、私有 IP、回环地址与云元数据，每跳跳转都校验，fail closed。</p>
+<h2>为什么是 Yousj Browser？</h2>
+<div class="grid">
+<div class="card">
+<h3>🔒 安全优先</h3>
+<p>yousj.security 默认拦截非 http(s)、私有 IP、回环地址与云元数据。每跳跳转独立校验，fail closed。</p>
 </div>
-<div class="feature">
+<div class="card">
 <h3>⚡ 轻量高效</h3>
-<p>目标内存占用显著低于 Chrome，先做给 AI 用的无头版本。</p>
+<p>目标内存占用显著低于 Chrome。先做给 AI 用的无头版本，拒绝臃肿。</p>
 </div>
-<div class="feature">
+<div class="card">
 <h3>🛠️ 自研 JS 引擎</h3>
-<p>内置自研 JavaScript 引擎，V5 版本已公开。</p>
+<p>内置从零编写的 JavaScript 引擎（js-engine），V5 已公开，不依赖 V8。</p>
 </div>
-<div class="feature">
-<h3>🔧 F12 DevTools</h3>
-<p>五面板开发者工具，专为 AI 抓取设计。</p>
+<div class="card">
+<h3>🤖 AI 友好</h3>
+<p>五面板 F12 DevTools 专为 AI 抓取设计，AI 反馈入口一应俱全。</p>
+</div>
+<div class="card">
+<h3>🌐 实用功能</h3>
+<p>Cookie 持久化、表单自动填写、文件下载、代理支持、历史记录。</p>
+</div>
+<div class="card">
+<h3>📦 开源开放</h3>
+<p>内核 MIT 协议开源，欢迎提 Issue 和 PR，路线图公开透明。</p>
 </div>
 </div>
 
-<h2>开源地址</h2>
-<p><a href="https://github.com/yousj666/yousj-browser">github.com/yousj666/yousj-browser</a></p>
+<h2>快速开始</h2>
+<pre><code>git clone https://github.com/yousj666/yousj-browser.git
+cd yousj-browser</code></pre>
 
-<h2>版本历史</h2>
-<p><strong>V5</strong> - js-engine 公开、AI 反馈入口、cookie 持久化、表单填写、文件下载、代理、历史记录</p>
-<p><strong>V5.2</strong> - DNS pin 防护（修复 fail-open 漏洞）</p>
+<h2>版本</h2>
+<div class="grid">
+<div class="card">
+<h3>V5</h3>
+<p>js-engine 公开、AI 反馈入口、cookie 持久化、表单填写、文件下载、代理、历史记录</p>
+</div>
+<div class="card">
+<h3>V5.2</h3>
+<p>DNS pin 防护，修复 fail-open 漏洞</p>
+</div>
+</div>
+
+<div style="text-align:center;margin:40px 0">
+<a class="btn" href="https://github.com/yousj666/yousj-browser">去 GitHub 看看 ⭐</a>
+</div>
+
+</div>
 
 <footer>
-<p>© 2026 Yousj Browser Project · MIT License</p>
-<p>此页面由 Muse AI 协助生成</p>
+<p><a href="https://github.com/yousj666/yousj-browser">github.com/yousj666/yousj-browser</a></p>
+<p style="margin-top:10px">© 2026 Yousj Browser Project · MIT License</p>
 </footer>
-</div>
+
 </body>
 </html>
