@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Yousj Browser - 开源浏览器引擎</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;background:#0d1117;color:#c9d1d9;line-height:1.6}
+.container{max-width:800px;margin:0 auto;padding:60px 20px}
+h1{font-size:2.5em;color:#58a6ff;margin-bottom:10px}
+.subtitle{font-size:1.2em;color:#8b949e;margin-bottom:40px}
+h2{color:#58a6ff;margin:30px 0 15px;font-size:1.5em}
+p{margin-bottom:15px}
+a{color:#58a6ff;text-decoration:none}
+a:hover{text-decoration:underline}
+.badge{display:inline-block;background:#161b22;border:1px solid #30363d;border-radius:6px;padding:5px 12px;margin:5px;font-size:0.9em}
+.features{display:grid;grid-template-columns:1fr 1fr;gap:15px;margin:20px 0}
+.feature{background:#161b22;border:1px solid #30363d;border-radius:8px;padding:20px}
+.feature h3{color:#58a6ff;margin-bottom:10px}
+footer{margin-top:50px;padding-top:20px;border-top:1px solid #30363d;color:#8b949e;font-size:0.9em}
+</style>
+</head>
+<body>
+<div class="container">
+<h1>Yousj Browser</h1>
+<p class="subtitle">从零编写的开源浏览器引擎 · Python + C + Rust</p>
+
+<div>
+<span class="badge">MIT 开源</span>
+<span class="badge">Python</span>
+<span class="badge">C</span>
+<span class="badge">Rust</span>
+<span class="badge">自研 JS 引擎</span>
+</div>
+
+<h2>项目简介</h2>
+<p>Yousj Browser 是一个从零开始编写的浏览器内核项目，目标是打造内存占用低于 Chrome 的轻量级浏览器。项目采用 Python + C + Rust 三语言架构，内核部分以 MIT 协议开源。</p>
+
+<h2>核心特性</h2>
+<div class="features">
+<div class="feature">
+<h3>🔒 安全设计</h3>
+<p>yousj.security 拦截非 http(s)、私有 IP、回环地址与云元数据，每跳跳转都校验，fail closed。</p>
+</div>
+<div class="feature">
+<h3>⚡ 轻量高效</h3>
+<p>目标内存占用显著低于 Chrome，先做给 AI 用的无头版本。</p>
+</div>
+<div class="feature">
+<h3>🛠️ 自研 JS 引擎</h3>
+<p>内置自研 JavaScript 引擎，V5 版本已公开。</p>
+</div>
+<div class="feature">
+<h3>🔧 F12 DevTools</h3>
+<p>五面板开发者工具，专为 AI 抓取设计。</p>
+</div>
+</div>
+
+<h2>开源地址</h2>
+<p><a href="https://github.com/yousj666/yousj-browser">github.com/yousj666/yousj-browser</a></p>
+
+<h2>版本历史</h2>
+<p><strong>V5</strong> - js-engine 公开、AI 反馈入口、cookie 持久化、表单填写、文件下载、代理、历史记录</p>
+<p><strong>V5.2</strong> - DNS pin 防护（修复 fail-open 漏洞）</p>
+
+<footer>
+<p>© 2026 Yousj Browser Project · MIT License</p>
+<p>此页面由 Muse AI 协助生成</p>
+</footer>
+</div>
+</body>
+</html>
