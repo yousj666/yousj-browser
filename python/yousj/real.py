@@ -783,6 +783,88 @@ class RealBrowser:
             "Chromium DevTools endpoint did not come up in %ss: %s"
             % (timeout, last_error))
 
+    # -- multiple pages ---------------------------------------------------
+    # One Chromium, many tabs. The AI drives one page at a time; the
+    # others stay open in the background. Opening a new page is how
+    # the AI retries a login from a clean page without losing the
+    # old page's state, and a screenshot always captures the
+    # CURRENT page, so a new page can be screenshotted right away.
+
+    def _list_targets(self):
+        _, body = _http_no_proxy(
+            "GET", "http://127.0.0.1:%d/json/list" % self._port)
+        return json.loads(body) if body else []
+
+    def list_pages(self):
+        """All open page tabs: ``[{"id", "title", "url"}]``.
+
+        Chrome's own omnibox popup pages (chrome://) are excluded —
+        they are not tabs the AI can drive."""
+        pages = []
+        for t in self._list_targets():
+            if t.get("type") == "page" and not (t.get("url") or "") \
+                    .startswith("chrome://"):
+                pages.append({"id": t.get("id"), "title": t.get("title"),
+                              "url": t.get("url")})
+        return pages
+
+    def _switch_to(self, ws_url):
+        """Point this browser's CDP connection at another page tab."""
+        old = getattr(self, "_cdp", None)
+        if old is not None:
+            try:
+                old.close()
+            except Exception:
+                pass
+        self._cdp = _CDP(ws_url, timeout=self._timeout)
+        self._cdp.call("Page.enable")
+        self._cdp.call("Runtime.enable")
+        self.mouse.reset()
+
+    def new_page(self, url=None):
+        """Open a new tab and switch control to it.
+
+        ``url`` is optional; without it the new tab starts at
+        about:blank and the caller drives it with ``goto``. Returns
+        ``{"id", "title", "url"}`` for the new tab. The previous tab
+        stays open — use :meth:`switch_page` to go back to it."""
+        target = url or "about:blank"
+        _, body = _http_no_proxy(
+            "PUT", "http://127.0.0.1:%d/json/new?%s"
+            % (self._port, urllib.parse.quote(target, safe="")))
+        data = json.loads(body) if body else {}
+        ws_url = data.get("webSocketDebuggerUrl")
+        if not ws_url:
+            # /json/new sometimes returns an empty body; fall back to
+            # the last page in /json/list (the newly created tab).
+            pages = [t for t in self._list_targets()
+                     if t.get("type") == "page"
+                     and t.get("webSocketDebuggerUrl")]
+            if not pages:
+                raise RuntimeError("new page created but no page target found")
+            data = pages[-1]
+            ws_url = data["webSocketDebuggerUrl"]
+        self._switch_to(ws_url)
+        self._url = target
+        return {"id": data.get("id"), "title": data.get("title"),
+                "url": data.get("url")}
+
+    def switch_page(self, page_id):
+        """Switch control to an already-open tab by its ``id``.
+
+        Returns ``{"id", "title", "url"}`` for the tab now controlled."""
+        for t in self._list_targets():
+            if t.get("type") == "page" and t.get("id") == page_id:
+                ws_url = t.get("webSocketDebuggerUrl")
+                if not ws_url:
+                    raise RuntimeError("page %s has no WebSocket URL"
+                                       % page_id)
+                self._switch_to(ws_url)
+                self._url = t.get("url") or "about:blank"
+                return {"id": t.get("id"), "title": t.get("title"),
+                        "url": t.get("url")}
+        raise ValueError("no open page with id %r" % page_id)
+
     def close(self):
         """Close CDP, terminate Chromium, remove a temporary profile."""
         try:

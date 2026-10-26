@@ -134,6 +134,58 @@ def call_tool(tool, args):
         return {"ok": True, "drag": {"from": r.get("from"), "to": r.get("to"),
                                       "path_points": r.get("path_points"),
                                       "state_after": r.get("state_after")}}
+    if tool == "send_code":
+        # Douyin Send Code, written 2026-10-26 after live investigation:
+        # the Send code control is a span, NOT a button in elements().
+        # Its React props are onMouseDown/onKeyDown (no onClick),
+        # sendBtnDisabled=false, areaCode and mobile are in React state.
+        # Click it with the real mouse, then prove the result instead
+        # of assuming success: a countdown, a slider, or a network
+        # request must appear. If none appears, the mouse event did
+        # not reach the page (observed 2026-10-26: document mousedown
+        # and mousemove listeners stayed empty after click_xy), and
+        # the caller must fix RealMouse dispatch, not retry blindly.
+        info = b.evaluate(
+            "(()=>{const s=[...document.querySelectorAll('span')]"
+            ".find(e=>(e.innerText||'').trim()==='Send code');"
+            " if(!s) return 'no-send-code-span';"
+            " const r=s.getBoundingClientRect();"
+            " return JSON.stringify({x:Math.round(r.x+r.width/2),"
+            " y:Math.round(r.y+r.height/2), w:Math.round(r.width),"
+            " h:Math.round(r.height)});})()")
+        if info == "no-send-code-span":
+            return {"ok": False, "error": "no-send-code-span"}
+        import json as _json
+        pt = _json.loads(info)
+        # Install a one-shot proof listener before clicking, so the
+        # result is evidence, not a guess.
+        b.evaluate(
+            "(()=>{window.__sendcode_proof=[];"
+            " document.addEventListener('mousedown',e=>{"
+            " window.__sendcode_proof.push([e.clientX,e.clientY]);},"
+            " true);})()")
+        b.mouse.click(int(pt["x"]), int(pt["y"]))
+        time.sleep(6)
+        proof = b.evaluate("JSON.stringify(window.__sendcode_proof||[])")
+        shot = b.screenshot(path=args.get("shot_path") or "/tmp/yousj-sendcode.png")
+        text = b.text() or ""
+        return {"ok": True, "clicked": pt, "mouse_proof": proof,
+                "screenshot": shot,
+                "countdown_hint": ("秒" in text or "s" in text),
+                "note": "mouse_proof empty means the CDP mouse event did not "
+                        "reach the page; do not claim SMS was sent."}
+    if tool == "new_page":
+        # Open a new tab and switch control to it. The old tab stays
+        # open; use switch_page to go back. Screenshot after this
+        # captures the NEW page, not the old one.
+        page = b.new_page(args.get("url"))
+        return {"ok": True, "page": page, "pages": b.list_pages()}
+    if tool == "list_pages":
+        return {"ok": True, "pages": b.list_pages()}
+    if tool == "switch_page":
+        page = b.switch_page(args["page_id"])
+        return {"ok": True, "page": page, "url": b.url(),
+                "title": b.title()}
     if tool == "sleep":
         time.sleep(float(args.get("seconds", 1)))
         return {"ok": True}
