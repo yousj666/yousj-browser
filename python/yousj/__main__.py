@@ -8,6 +8,14 @@ usage:
   python -m yousj download <url> [-o file] [--yes]  download a file (SSRF-checked)
                                                    # --yes: skip oversize confirm
   python -m yousj history [n]          show recent visit history
+  python -m yousj elements <url>       list interactive elements (AI-readable)
+  python -m yousj activate <url> <id>  activate element <id>, print JSON result
+  python -m yousj layout <url> [--width N]  list layout boxes (pixels)
+  python -m yousj mouse move <x> <y> [--dry-run]   move virtual mouse, print path
+  python -m yousj mouse click [x y] [--dry-run]    click virtual mouse
+  python -m yousj mouse drag <x0> <y0> <x1> <y1> [--dry-run]  drag virtual mouse
+  python -m yousj screenshot <url> [-o file] [--svg] [--full-page] [--width N] [--height N]
+                                         wireframe screenshot to a file
   python -m yousj config list           show all settings
   python -m yousj config get <key>      show one setting
   python -m yousj config set <k> <v>    change a setting
@@ -224,6 +232,186 @@ def _cmd_history(argv):
     return 0
 
 
+def _cmd_elements(url):
+    try:
+        doc = fetch(url)
+    except security.SecurityError:
+        token = _cli_risky_flow(url)
+        if token is None:
+            return 1
+        doc = fetch(url, bypass_token=token)
+    except Exception as e:  # noqa: BLE001
+        print("elements failed: %s" % e, file=sys.stderr)
+        return 1
+    print("== %s ==" % (doc.title() or url))
+    print(doc.format_elements())
+    return 0
+
+
+def _cmd_activate(argv):
+    if len(argv) != 2:
+        print("usage: activate <url> <id>", file=sys.stderr)
+        return 2
+    url, id_s = argv
+    try:
+        element_id = int(id_s)
+    except ValueError:
+        print("error: <id> must be a number", file=sys.stderr)
+        return 2
+    try:
+        doc = fetch(url)
+    except security.SecurityError:
+        token = _cli_risky_flow(url)
+        if token is None:
+            return 1
+        doc = fetch(url, bypass_token=token)
+    except Exception as e:  # noqa: BLE001
+        print("activate failed: %s" % e, file=sys.stderr)
+        return 1
+    import json
+    print(json.dumps(doc.activate(element_id), ensure_ascii=False, indent=2))
+    return 0
+
+
+def _cmd_layout(argv):
+    url = None
+    width = 1280
+    # Simple parse: url [--width N]
+    args = []
+    i = 0
+    while i < len(argv):
+        if argv[i] == "--width" and i + 1 < len(argv):
+            try:
+                width = int(argv[i + 1])
+            except ValueError:
+                print("error: --width needs a number", file=sys.stderr)
+                return 2
+            i += 2
+        else:
+            args.append(argv[i])
+            i += 1
+    if len(args) != 1:
+        print("usage: layout <url> [--width N]", file=sys.stderr)
+        return 2
+    url = args[0]
+    try:
+        doc = fetch(url)
+    except security.SecurityError:
+        token = _cli_risky_flow(url)
+        if token is None:
+            return 1
+        doc = fetch(url, bypass_token=token)
+    except Exception as e:  # noqa: BLE001
+        print("layout failed: %s" % e, file=sys.stderr)
+        return 1
+    info = doc.layout(viewport_width=width)
+    print("viewport_width=%d truncated=%s boxes=%d" % (
+        info["viewport_width"], info["truncated"], len(info["boxes"])))
+    for b in info["boxes"]:
+        print("<%s> (%d,%d) %dx%d '%s'" % (
+            b["tag"], b["x"], b["y"], b["width"], b["height"],
+            b["text"][:60]))
+    return 0
+
+
+def _cmd_mouse(argv):
+    # NOTE: the CLI mouse is per-invocation (position starts at (0, 0)
+    # every call). A real session holds one Mouse object in-process.
+    from . import mouse as _mouse
+    dry = "--dry-run" in argv
+    argv = [a for a in argv if a != "--dry-run"]
+    if not argv:
+        print("usage: mouse move <x> <y>|click [x y]|drag <x0> <y0> <x1> <y1> [--dry-run]",
+              file=sys.stderr)
+        return 2
+    m = _mouse.Mouse()
+    import json
+    try:
+        if argv[0] == "move" and len(argv) == 3:
+            path = m.move_to(int(argv[1]), int(argv[2]), dry_run=dry)
+            print(json.dumps({"to": m.position(), "points": len(path),
+                              "path": path}))
+        elif argv[0] == "click" and len(argv) in (1, 3):
+            if len(argv) == 3:
+                res = m.click(int(argv[1]), int(argv[2]), dry_run=dry)
+            else:
+                res = m.click(dry_run=dry)
+            print(json.dumps({"at": res["at"],
+                              "path_points": len(res["path"]),
+                              "path": res["path"]}))
+        elif argv[0] == "drag" and len(argv) == 5:
+            res = m.drag(int(argv[1]), int(argv[2]), int(argv[3]),
+                         int(argv[4]), dry_run=dry)
+            print(json.dumps({"from": res["from"], "to": res["to"],
+                              "points": res["points"], "path": res["path"]}))
+        else:
+            print("usage: mouse move <x> <y>|click [x y]|drag <x0> <y0> <x1> <y1> [--dry-run]",
+                  file=sys.stderr)
+            return 2
+    except ValueError:
+        print("error: coordinates must be numbers", file=sys.stderr)
+        return 2
+    print("note: CLI mouse is per-invocation (starts at (0,0)); "
+          "a session holds one Mouse in-process")
+    return 0
+
+
+def _cmd_screenshot(argv):
+    svg = "--svg" in argv
+    full = "--full-page" in argv
+    argv = [a for a in argv if a not in ("--svg", "--full-page")]
+    width, height = 1280, 800
+    dest = None
+    args = []
+    i = 0
+    while i < len(argv):
+        if argv[i] == "-o" and i + 1 < len(argv):
+            dest = argv[i + 1]
+            i += 2
+        elif argv[i] == "--width" and i + 1 < len(argv):
+            try:
+                width = int(argv[i + 1])
+            except ValueError:
+                print("error: --width needs a number", file=sys.stderr)
+                return 2
+            i += 2
+        elif argv[i] == "--height" and i + 1 < len(argv):
+            try:
+                height = int(argv[i + 1])
+            except ValueError:
+                print("error: --height needs a number", file=sys.stderr)
+                return 2
+            i += 2
+        else:
+            args.append(argv[i])
+            i += 1
+    if len(args) != 1:
+        print("usage: screenshot <url> [-o file] [--svg] [--full-page] [--width N] [--height N]",
+              file=sys.stderr)
+        return 2
+    url = args[0]
+    try:
+        doc = fetch(url)
+    except security.SecurityError:
+        token = _cli_risky_flow(url)
+        if token is None:
+            return 1
+        doc = fetch(url, bypass_token=token)
+    except Exception as e:  # noqa: BLE001
+        print("screenshot failed: %s" % e, file=sys.stderr)
+        return 1
+    fmt = "svg" if svg else "png"
+    if dest is None:
+        dest = "yousj-screenshot." + fmt
+    info = doc.screenshot(path=dest, format=fmt, viewport_width=width,
+                          viewport_height=height, full_page=full)
+    print("saved: %s (%s %dx%d, %d boxes)" % (
+        info["path"], info["format"], info["width"], info["height"],
+        info["boxes_drawn"]))
+    print("note: %s" % info["note"])
+    return 0
+
+
 def main(argv=None) -> int:
     argv = sys.argv[1:] if argv is None else argv
     if not argv:
@@ -242,9 +430,19 @@ def main(argv=None) -> int:
         return _cmd_download(argv[1:])
     if cmd == "history":
         return _cmd_history(argv[1:])
+    if cmd == "elements" and len(argv) == 2:
+        return _cmd_elements(argv[1])
+    if cmd == "activate" and len(argv) == 3:
+        return _cmd_activate(argv[1:])
+    if cmd == "layout" and len(argv) >= 2:
+        return _cmd_layout(argv[1:])
+    if cmd == "mouse" and len(argv) >= 2:
+        return _cmd_mouse(argv[1:])
+    if cmd == "screenshot" and len(argv) >= 2:
+        return _cmd_screenshot(argv[1:])
     if len(argv) == 1 and "://" in argv[0]:
         return _cmd_fetch(argv[0])  # v0.1 style: bare URL
-    print("usage: python -m yousj <url>|fetch|search|devtools|download|history|config ...",
+    print("usage: python -m yousj <url>|fetch|search|devtools|download|history|config|elements|activate|layout|mouse|screenshot ...",
           file=sys.stderr)
     return 2
 

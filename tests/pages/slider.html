@@ -1,0 +1,49 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>Local slider test</title>
+<style>
+#track { position:relative; width:400px; height:48px; background:#ddd; margin:40px; border-radius:24px; }
+#handle { position:absolute; left:0; top:4px; width:40px; height:40px; background:#1ed760; border-radius:50%; cursor:grab; touch-action:none; }
+#target { position:absolute; left:330px; top:0; width:70px; height:48px; background:rgba(30,215,96,.25); border-radius:0 24px 24px 0; }
+#status { margin:20px 40px; font:16px sans-serif; }
+</style></head><body>
+<h1>Local slider</h1>
+<div id="track"><div id="target"></div><div id="handle" role="slider" aria-label="slider handle"></div></div>
+<p id="status" data-status="idle">拖动滑块到绿色区域</p>
+<p>offset: <span id="offset">0</span></p>
+<script>
+const handle = document.getElementById('handle');
+const status = document.getElementById('status');
+const offsetEl = document.getElementById('offset');
+const MAX = 360; // track 400 - handle 40
+let dragging = false, startX = 0, startLeft = 0;
+function moveTo(clientX) {
+  let left = startLeft + (clientX - startX);
+  left = Math.max(0, Math.min(MAX, left));
+  handle.style.left = left + 'px';
+  offsetEl.textContent = left;
+}
+function finish() {
+  const left = parseInt(handle.style.left || '0', 10);
+  if (left >= 330) { status.textContent = '验证通过'; status.dataset.status = 'passed'; }
+  else { status.textContent = '再试一次'; status.dataset.status = 'failed'; }
+}
+function onDown(e) {
+  if (dragging) return;
+  dragging = true; startX = e.clientX; startLeft = parseInt(handle.style.left || '0', 10);
+  if (e.pointerId !== undefined && handle.setPointerCapture) {
+    try { handle.setPointerCapture(e.pointerId); } catch (err) {}
+  }
+  e.preventDefault();
+}
+function onMove(e) { if (!dragging) return; moveTo(e.clientX); }
+function onUp(e) { if (!dragging) return; dragging = false; finish(); }
+// Listen to both pointer and mouse events: CDP mouse input produces
+// pointer events in Chromium, but accepting both keeps this test page
+// robust whichever stream arrives first (guards make repeats harmless).
+handle.addEventListener('pointerdown', onDown);
+handle.addEventListener('pointermove', onMove);
+handle.addEventListener('pointerup', onUp);
+handle.addEventListener('mousedown', onDown);
+document.addEventListener('mousemove', onMove);
+document.addEventListener('mouseup', onUp);
+</script></body></html>

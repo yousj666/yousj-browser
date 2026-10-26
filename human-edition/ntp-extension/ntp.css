@@ -1,0 +1,133 @@
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+html, body { height: 100%; }
+
+body {
+  font-family: "Segoe UI", "Microsoft YaHei", "PingFang SC", system-ui, sans-serif;
+  color: #fff;
+  overflow: hidden;
+}
+
+.bg {
+  position: fixed; inset: 0;
+  background: #000;
+}
+
+.center {
+  position: relative;
+  height: 100vh;
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+  padding: 0 24px;
+  transform: translateY(-6vh);
+}
+
+/* ---- Yousj wordmark, Google-style letter colors ---- */
+.wordmark {
+  font-size: clamp(64px, 12vw, 110px);
+  font-weight: 500;
+  letter-spacing: -0.04em;
+  margin-bottom: 34px;
+  text-shadow: 0 2px 18px rgba(0,0,0,0.45);
+  user-select: none;
+}
+.wordmark .c-b { color: #8ab4f8; }
+.wordmark .c-r { color: #f28b82; }
+.wordmark .c-y { color: #fdd663; }
+.wordmark .c-g { color: #81c995; }
+
+/* ---- search box ---- */
+.searchbox {
+  position: relative;
+  width: min(640px, 92vw);
+  display: flex; align-items: center;
+  background: rgba(255,255,255,0.96);
+  border-radius: 999px;
+  box-shadow: 0 4px 24px rgba(0,0,0,0.35);
+  padding: 6px 8px 6px 26px;
+  transition: box-shadow .15s ease;
+}
+.searchbox:focus-within { box-shadow: 0 4px 28px rgba(0,0,0,0.5), 0 0 0 2px rgba(138,180,248,0.55); }
+
+.searchbox input {
+  flex: 1; border: none; outline: none;
+  background: transparent;
+  font-size: 17px; color: #1f1f1f;
+  height: 40px; min-width: 0;
+}
+
+.actions { display: flex; align-items: center; gap: 2px; }
+
+.icon-btn {
+  border: none; background: transparent; cursor: pointer;
+  width: 40px; height: 40px; border-radius: 50%;
+  display: inline-flex; align-items: center; justify-content: center;
+  color: #444746;
+}
+.icon-btn:hover { background: rgba(0,0,0,0.07); }
+
+.engine-btn #engine-initial {
+  width: 24px; height: 24px; border-radius: 50%;
+  background: #1a73e8; color: #fff;
+  font-size: 14px; font-weight: 600;
+  display: inline-flex; align-items: center; justify-content: center;
+}
+
+.vdiv { width: 1px; height: 24px; background: #dadce0; margin: 0 4px; }
+
+/* ---- engine dropdown ---- */
+.engine-menu {
+  position: absolute; top: calc(100% + 8px); right: 0;
+  background: #fff; color: #1f1f1f;
+  border-radius: 12px; box-shadow: 0 8px 28px rgba(0,0,0,0.35);
+  padding: 6px; min-width: 190px; z-index: 10;
+}
+.engine-menu.hidden { display: none; }
+.engine-menu button {
+  display: flex; align-items: center; gap: 10px;
+  width: 100%; border: none; background: transparent; cursor: pointer;
+  padding: 9px 12px; border-radius: 8px; font-size: 14px; color: #1f1f1f;
+}
+.engine-menu button:hover { background: #f1f3f4; }
+.engine-menu button.active { background: #e8f0fe; }
+.engine-menu .dot {
+  width: 22px; height: 22px; border-radius: 50%;
+  background: #5f6368; color: #fff; font-size: 12px; font-weight: 600;
+  display: inline-flex; align-items: center; justify-content: center; flex: none;
+}
+.engine-menu button.active .dot { background: #1a73e8; }
+
+/* ---- bookmarks ---- */
+.bookmarks {
+  margin-top: 40px;
+  display: grid;
+  grid-template-columns: repeat(5, minmax(86px, 104px));
+  gap: 18px 10px;
+  justify-content: center;
+}
+.bookmarks a {
+  display: flex; flex-direction: column; align-items: center; gap: 8px;
+  text-decoration: none; color: #e8eaed;
+  font-size: 12.5px; text-align: center;
+  padding: 10px 4px; border-radius: 12px;
+}
+.bookmarks a:hover { background: rgba(255,255,255,0.12); }
+.bookmarks .tile {
+  width: 52px; height: 52px; border-radius: 50%;
+  background: rgba(255,255,255,0.94);
+  display: flex; align-items: center; justify-content: center;
+  overflow: hidden; flex: none;
+  box-shadow: 0 2px 10px rgba(0,0,0,0.35);
+}
+.bookmarks .tile img { width: 30px; height: 30px; object-fit: contain; }
+.bookmarks .tile .letter {
+  font-size: 22px; font-weight: 600; color: #1a73e8;
+}
+.bookmarks span.label {
+  max-width: 96px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  text-shadow: 0 1px 6px rgba(0,0,0,0.6);
+}
+
+@media (max-width: 560px) {
+  .bookmarks { grid-template-columns: repeat(4, minmax(72px, 1fr)); }
+}

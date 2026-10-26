@@ -8,7 +8,12 @@ from .engine import Document, parse
 from . import devtools
 from . import forms
 from . import history
+from . import human
+from . import interact
+from . import layout
+from . import mouse
 from . import net
+from . import screenshot
 from . import search as _search_mod
 from . import security
 from . import settings
@@ -36,5 +41,6 @@ def search(query: str, max_results: int = 10, engine_name=None,
 
 
 __all__ = ["fetch", "parse", "search", "Document", "devtools", "net",
-           "security", "settings", "forms", "history"]
+           "security", "settings", "forms", "history", "human",
+           "interact", "layout", "mouse", "screenshot"]
 __version__ = "5.0"

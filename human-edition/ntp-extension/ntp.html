@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Yousj</title>
+<link rel="stylesheet" href="ntp.css">
+</head>
+<body>
+  <div class="bg" aria-hidden="true"></div>
+
+  <main class="center">
+    <h1 class="wordmark" aria-label="Yousj"><span class="c-b">Y</span><span class="c-r">o</span><span class="c-y">u</span><span class="c-b">s</span><span class="c-g">j</span></h1>
+
+    <form id="search-form" class="searchbox" autocomplete="off" role="search">
+      <input id="q" type="text" aria-label="搜索" spellcheck="false">
+      <div class="actions">
+        <button type="button" id="engine-btn" class="icon-btn engine-btn" title="选择搜索引擎">
+          <span id="engine-initial">G</span>
+        </button>
+        <span class="vdiv" aria-hidden="true"></span>
+        <button type="submit" class="icon-btn" title="搜索" aria-label="搜索">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+            <circle cx="11" cy="11" r="7"></circle>
+            <line x1="16.5" y1="16.5" x2="21" y2="21"></line>
+          </svg>
+        </button>
+      </div>
+      <div id="engine-menu" class="engine-menu hidden" role="menu"></div>
+    </form>
+
+    <nav class="bookmarks" id="bookmarks" aria-label="收藏夹"></nav>
+  </main>
+
+  <script src="bookmarks.js"></script>
+  <script src="ntp.js"></script>
+</body>
+</html>

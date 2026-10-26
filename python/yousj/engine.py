@@ -46,6 +46,15 @@ _lib.yousj_dom_tree.restype = ctypes.c_void_p
 _lib.yousj_forms.argtypes = [ctypes.c_void_p]
 _lib.yousj_forms.restype = ctypes.c_void_p
 
+_lib.yousj_interactive.argtypes = [ctypes.c_void_p]
+_lib.yousj_interactive.restype = ctypes.c_void_p
+
+_lib.yousj_scripts.argtypes = [ctypes.c_void_p]
+_lib.yousj_scripts.restype = ctypes.c_void_p
+
+_lib.yousj_layout.argtypes = [ctypes.c_void_p, ctypes.c_int]
+_lib.yousj_layout.restype = ctypes.c_void_p
+
 _lib.yousj_free_str.argtypes = [ctypes.c_void_p]
 _lib.yousj_free_str.restype = None
 
@@ -160,6 +169,69 @@ class Document:
         """
         from . import forms as _forms
         return _forms.forms(self)
+
+    def interactive_elements(self, viewport_width: int = 1280,
+                             with_boxes: bool = True):
+        """All interactive elements as a numbered list of dicts.
+
+        See :mod:`yousj.interact` for the item schema. Numbers are
+        stable within this document (document order); refer to
+        elements by number in :meth:`activate`. Each item also carries
+        ``box`` (``{"x","y","width","height"}`` pixel coordinates from
+        :mod:`yousj.layout`, or None) and ``touchable`` (bool) plus
+        ``touchable_reason`` (why), unless ``with_boxes=False`` (then
+        ``box`` is None and no layout pass runs).
+        """
+        from . import interact as _interact
+        return _interact.interactive_elements(
+            self, viewport_width=viewport_width, with_boxes=with_boxes)
+
+    def format_elements(self) -> str:
+        """AI-readable text of :meth:`interactive_elements`."""
+        from . import interact as _interact
+        return _interact.format_elements(self.interactive_elements())
+
+    def layout(self, viewport_width: int = 1280) -> dict:
+        """Pixel layout of this document (see :mod:`yousj.layout`)."""
+        from . import layout as _layout
+        return _layout.layout(self, viewport_width=viewport_width)
+
+    def element_box(self, element_id: int, viewport_width: int = 1280):
+        """Pixel box of interactive element ``element_id``, or None.
+
+        See :mod:`yousj.layout` for the join rule and the None cases.
+        """
+        from . import layout as _layout
+        return _layout.element_box(self, element_id,
+                                   viewport_width=viewport_width)
+
+    def screenshot(self, path=None, format: str = "png",
+                   viewport_width: int = 1280, viewport_height: int = 800,
+                   full_page: bool = False, mouse_pos=None,
+                   highlight_box=None):
+        """Wireframe screenshot of this document (see :mod:`yousj.screenshot`).
+
+        Returns the :func:`yousj.screenshot.capture` dict (format /
+        width / height / bytes / path / note); writes to ``path`` when
+        given.
+        """
+        from . import screenshot as _shot
+        return _shot.capture(self, path=path, format=format,
+                             viewport_width=viewport_width,
+                             viewport_height=viewport_height,
+                             full_page=full_page, mouse_pos=mouse_pos,
+                             highlight_box=highlight_box)
+
+    def activate(self, element_id, timeout: int = 15, pace: bool = True,
+                 viewport_width: int = 1280):
+        """Activate interactive element ``element_id`` (1-based).
+
+        See :mod:`yousj.interact` for the structured result schema
+        (action / new_url / new_title / changed / note).
+        """
+        from . import interact as _interact
+        return _interact.activate(self, element_id, timeout=timeout,
+                                  pace=pace, viewport_width=viewport_width)
 
     def run_js(self, js: str, fetch: bool = False, debug: bool = False,
                breakpoints=None) -> dict:

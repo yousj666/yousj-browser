@@ -1,0 +1,18 @@
+{
+  "manifest_version": 3,
+  "name": "Yousj 起始页",
+  "version": "1.0.0",
+  "description": "Yousj 浏览器新标签页：搜索 + 收藏夹",
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAkKxy9PILb9sgZEnmsF8Zl88pmum+GU1EPWOWF2VzTh46TWfSy4g1BBNEDqXdWz5r4yOfjn9K1cbugIGb/pqnZEQ5E83Nyr4wkTJDL/tT3ZoW8UNTrJ+Cq30XfOaoXz467oKIg4HkGR5aj9S7nozlBSlsIyW3FVztLHXrUFhVNigjO8Dd0E/d5f16S2CWku5hr75lNN9onpgOnEDiRx/78R6Gfuq4zayn6kC7mm5qqgwryR9C02jhPmjST3pVC5UFnTaP7USXeFvHYiIlyIeS3XJY/LFsZD97qY4WAjoPxZGaiLwHikOfsb3LUPRXBj8QOqmgfCC92tXaVvfvGVEASQIDAQAB",
+  "icons": {
+    "16": "icon-16.png",
+    "48": "icon-48.png",
+    "128": "icon-128.png"
+  },
+  "chrome_url_overrides": {
+    "newtab": "ntp.html"
+  },
+  "permissions": [
+    "storage"
+  ]
+}

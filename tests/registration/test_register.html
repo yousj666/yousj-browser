@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<!-- Local TEST registration page for the smart-registration backend.
+     TEST ONLY — not a real site. No network, no data leaves this machine:
+     the "SMS code" here is whatever 6 digits the tester types locally;
+     nothing is sent anywhere. This page exists so the future RealBrowser
+     backend has a real page to drive (it mirrors the StubBrowserDriver
+     state machine: phone -> get code -> slider -> code -> submit). -->
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>测试注册页（本地）</title>
+<style>
+  body { font-family: sans-serif; margin: 40px; }
+  input, button { font-size: 16px; margin: 6px 0; padding: 8px; }
+  #sliderTrack { position: relative; width: 320px; height: 40px;
+                 background: #eee; margin: 10px 0; display: none; }
+  #sliderHandle { position: absolute; left: 0; top: 0; width: 40px;
+                  height: 40px; background: #1ed760; cursor: grab;
+                  text-align: center; line-height: 40px; }
+  #sliderTarget { position: absolute; right: 0; top: 0; width: 30px;
+                  height: 40px; background: #c8f5d9; }
+  #result { margin-top: 16px; font-weight: bold; }
+</style>
+</head>
+<body>
+<h1>测试注册页（本地测试专用，非真实站点）</h1>
+<p>区号：+86</p>
+<input id="phone" type="tel" placeholder="请输入手机号"><br>
+<button id="getCode">获取验证码</button>
+<div id="sliderTrack">
+  <div id="sliderTarget"></div>
+  <div id="sliderHandle">→</div>
+</div>
+<p id="sliderHint"></p>
+<input id="smsCode" type="text" placeholder="请输入短信验证码" disabled><br>
+<button id="submit" disabled>注册</button>
+<div id="result"></div>
+<script>
+(function () {
+  var sliderPassed = false, dragging = false, startX = 0, handleX = 0;
+  var track = document.getElementById('sliderTrack');
+  var handle = document.getElementById('sliderHandle');
+  var hint = document.getElementById('sliderHint');
+  var codeInput = document.getElementById('smsCode');
+  var submit = document.getElementById('submit');
+  var result = document.getElementById('result');
+  document.getElementById('getCode').addEventListener('click', function () {
+    if (!document.getElementById('phone').value) {
+      result.textContent = '请先输入手机号'; return;
+    }
+    track.style.display = 'block';
+    hint.textContent = '请拖动滑块到最右侧（绿色目标区）';
+    result.textContent = '验证码已发送（测试页：请输入任意 6 位数字）';
+  });
+  handle.addEventListener('pointerdown', function (e) {
+    dragging = true; startX = e.clientX - handleX;
+    handle.setPointerCapture(e.pointerId);
+  });
+  handle.addEventListener('pointermove', function (e) {
+    if (!dragging) return;
+    handleX = Math.max(0, Math.min(280, e.clientX - startX));
+    handle.style.left = handleX + 'px';
+  });
+  handle.addEventListener('pointerup', function () {
+    dragging = false;
+    if (handleX >= 250) {  // target zone: right 30px of the track
+      sliderPassed = true;
+      hint.textContent = '验证通过';
+      codeInput.disabled = false;
+      submit.disabled = false;
+    } else {
+      handleX = 0; handle.style.left = '0px';
+      hint.textContent = '未到达目标区，滑块已复位';
+    }
+  });
+  submit.addEventListener('click', function () {
+    var code = codeInput.value;
+    if (!sliderPassed) { result.textContent = '请先通过滑块验证'; return; }
+    if (!/^\d{6}$/.test(code)) {
+      result.textContent = '请输入 6 位验证码'; return;
+    }
+    result.textContent = '注册成功，需实名认证';
+  });
+})();
+</script>
+</body>
+</html>

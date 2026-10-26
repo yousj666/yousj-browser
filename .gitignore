@@ -23,3 +23,7 @@ __pycache__/
 
 # Local settings (user-specific, not for the repo)
 # ~/.config/yousj/settings.json holds personal search engine choice
+
+# Extension private key (never publish)
+human-edition/ntp-extension/ntp-key.pem
+human-edition/ntp-extension/ntp-key.b64

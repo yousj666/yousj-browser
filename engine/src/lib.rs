@@ -11,6 +11,14 @@
 //!   char*  yousj_anchors(const Doc* doc); // lines of "href\tanchor text"
 //!   char*  yousj_dom_tree(const Doc* doc); // indented DOM tree (Elements panel)
 //!   char*  yousj_forms(const Doc* doc); // JSON array of forms (Python form API)
+//!   char*  yousj_interactive(const Doc* doc); // JSON array of interactive
+//!          // elements (Python AI-browsing API)
+//!   char*  yousj_layout(const Doc* doc, int viewport_width); // JSON
+//!          // layout boxes (minimal box model, see layout.rs)
+//!   char*  yousj_scripts(const Doc* doc); // JSON array of <script>
+//!          // bodies (for button activation: page scripts + click must
+//!          // run in a single run_js call, because listeners do not
+//!          // persist across calls)
 //!   void   yousj_free_str(char* s);
 //!
 //! With `--features js` (see build-js.sh) one more is available:
@@ -22,6 +30,7 @@
 mod dom;
 #[cfg(feature = "js")]
 mod js;
+mod layout;
 mod parser;
 mod tokenizer;
 
@@ -29,8 +38,8 @@ use std::ffi::CString;
 use std::os::raw::c_char;
 
 pub struct Doc {
-    arena: Vec<dom::Node>,
-    root: usize,
+    pub(crate) arena: Vec<dom::Node>,
+    pub(crate) root: usize,
 }
 
 impl Doc {
@@ -107,6 +116,27 @@ impl Doc {
 
 fn collapse_ws(s: &str) -> String {
     s.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
+/// Append `s` as a JSON string literal (with quotes) to `out`.
+/// Same escaping rules as the nested helper inside `yousj_forms`;
+/// kept at file level so other FFI exports can share it.
+fn json_escape(s: &str, out: &mut String) {
+    out.push('"');
+    for c in s.chars() {
+        match c {
+            '"' => out.push_str("\\\""),
+            '\\' => out.push_str("\\\\"),
+            '\n' => out.push_str("\\n"),
+            '\r' => out.push_str("\\r"),
+            '\t' => out.push_str("\\t"),
+            c if (c as u32) < 0x20 => {
+                out.push_str(&format!("\\u{:04x}", c as u32))
+            }
+            c => out.push(c),
+        }
+    }
+    out.push('"');
 }
 
 fn to_c_string(s: String) -> *mut c_char {
@@ -389,6 +419,397 @@ pub extern "C" fn yousj_forms(doc: *const Doc) -> *mut c_char {
     let mut out = String::from("[");
     let mut first = true;
     walk_forms(d, d.root, &mut out, &mut first);
+    out.push(']');
+    to_c_string(out)
+}
+
+/// True when the subtree of `idx` contains a form control (input /
+/// select / textarea / button). Used for label "wraps_control": a label
+/// that wraps a control activates it on click, like a `for` label.
+fn subtree_has_control(d: &Doc, idx: usize) -> bool {
+    for &c in &d.arena[idx].children {
+        let cn = &d.arena[c];
+        if let Some(t) = cn.tag.as_deref() {
+            if matches!(t, "input" | "select" | "textarea" | "button") {
+                return true;
+            }
+        }
+        if subtree_has_control(d, c) {
+            return true;
+        }
+    }
+    false
+}
+
+/// Serialize all interactive elements as JSON (Python AI-browsing API).
+///
+/// Returns a malloc'd JSON array (free with `yousj_free_str`), in
+/// document order (pre-order DFS). Subtrees of head/script/style/
+/// noscript/template are skipped (not rendered, not clickable).
+///
+/// Each item:
+/// `{"tag","kind","type","text","href","name","html_id","value","disabled",
+///   "onclick","role","tag_index","form_index","checked","options",
+///   "label_for","wraps_control"}`
+/// - `tag`: lowercased element tag.
+/// - `kind`: "link" (a[href]) | "button" | "submit" | "input" |
+///   "toggle" (checkbox/radio) | "select" | "textarea" | "label" |
+///   "clickable" (onclick / interactive role on another tag).
+/// - `type`: input/button type (lowercased; input defaults to "text",
+///   button defaults to "submit"); "" for other tags.
+/// - `text`: visible text, whitespace-collapsed, truncated to 120 chars.
+/// - `tag_index`: index among same-tag elements in document order, so
+///   Python can reach the element from JS as
+///   `document.querySelectorAll(tag)[tag_index]` (or by id when present).
+///   Counts ALL elements of that tag, not just interactive ones.
+/// - `form_index`: index of the enclosing <form> in document order
+///   (same order as `yousj_forms`), or null when outside any form.
+/// - `checked`: bool for checkbox/radio, else null.
+/// - `options`: [{"value","selected"}] for select, else null.
+/// - `label_for`: the `for` attribute of a label, else "".
+/// - `wraps_control`: true when a label wraps a form control in its
+///   subtree (activates it on click, like a `for` label).
+/// - `disabled`/`onclick`: presence of the attribute (no value needed).
+///
+/// Notes: this reports the live DOM (including JS mutations, since the
+/// arena is shared). Pixel coordinates are NOT here — they come from
+/// `yousj_layout`, joined by `(tag, tag_index)` (both walkers count
+/// every element per tag in document order, so indices align).
+#[no_mangle]
+pub extern "C" fn yousj_interactive(doc: *const Doc) -> *mut c_char {
+    if doc.is_null() {
+        return std::ptr::null_mut();
+    }
+    let d = unsafe { &*doc };
+
+    fn is_skipped(tag: &str) -> bool {
+        matches!(tag, "head" | "script" | "style" | "noscript" | "template")
+    }
+
+    fn kind_of(tag: &str, typ: &str, has_onclick: bool, role: &str) -> Option<&'static str> {
+        match tag {
+            "a" => Some("link"),
+            "button" => Some(if typ == "submit" { "submit" } else { "button" }),
+            "input" => Some(match typ {
+                "submit" => "submit",
+                "button" | "reset" => "button",
+                "checkbox" | "radio" => "toggle",
+                _ => "input",
+            }),
+            "select" => Some("select"),
+            "textarea" => Some("textarea"),
+            "label" => Some("label"),
+            _ => {
+                if has_onclick {
+                    Some("clickable")
+                } else if matches!(
+                    role,
+                    "button" | "link" | "checkbox" | "radio" | "switch"
+                        | "tab" | "menuitem" | "menuitemcheckbox"
+                        | "menuitemradio" | "option" | "treeitem"
+                ) {
+                    Some("clickable")
+                } else {
+                    None
+                }
+            }
+        }
+    }
+
+    fn text_of(d: &Doc, idx: usize, out: &mut String) {
+        let n = &d.arena[idx];
+        if n.tag.is_none() {
+            out.push_str(&n.text);
+        }
+        for &c in &n.children {
+            text_of(d, c, out);
+        }
+    }
+
+    fn push_option(
+        d: &Doc,
+        o: usize,
+        out: &mut String,
+        first: &mut bool,
+    ) {
+        let on = &d.arena[o];
+        let mut t = String::new();
+        text_of(d, o, &mut t);
+        let t = t.trim();
+        let value = on.attr("value").unwrap_or(t);
+        if !*first {
+            out.push(',');
+        }
+        *first = false;
+        out.push_str("{\"value\":");
+        json_escape(value, out);
+        out.push_str(",\"selected\":");
+        out.push_str(if on.attr("selected").is_some() {
+            "true"
+        } else {
+            "false"
+        });
+        out.push('}');
+    }
+
+    fn walk(
+        d: &Doc,
+        idx: usize,
+        counts: &mut std::collections::HashMap<String, usize>,
+        form_stack: &mut Vec<usize>,
+        form_count: &mut usize,
+        out: &mut String,
+        first: &mut bool,
+    ) {
+        let (tag_opt, children) = {
+            let n = &d.arena[idx];
+            (n.tag.clone(), n.children.clone())
+        };
+        let tag = match tag_opt {
+            None => {
+                // Document / text node: descend (text nodes have no
+                // element children, so this is a no-op for them).
+                for c in children {
+                    walk(d, c, counts, form_stack, form_count, out, first);
+                }
+                return;
+            }
+            Some(t) => t,
+        };
+        if is_skipped(&tag) {
+            return;
+        }
+        // Count ALL elements of this tag (querySelectorAll indexing
+        // counts non-interactive ones too).
+        let tag_index = *counts.entry(tag.clone()).or_insert(0);
+        counts.insert(tag.clone(), tag_index + 1);
+
+        let mut pushed_form = false;
+        if tag == "form" {
+            form_stack.push(*form_count);
+            *form_count += 1;
+            pushed_form = true;
+        }
+        let form_index = form_stack.last().copied();
+
+        let n = &d.arena[idx];
+        let typ = if tag == "button" {
+            n.attr("type").unwrap_or("submit").to_ascii_lowercase()
+        } else if tag == "input" {
+            n.attr("type").unwrap_or("text").to_ascii_lowercase()
+        } else {
+            n.attr("type").unwrap_or("").to_ascii_lowercase()
+        };
+        let has_onclick = n.attr("onclick").is_some();
+        let role = n.attr("role").unwrap_or("").to_ascii_lowercase();
+        let interactive = if tag == "a" {
+            n.attr("href").is_some()
+        } else if tag == "input" && typ == "hidden" {
+            false
+        } else {
+            kind_of(&tag, &typ, has_onclick, &role).is_some()
+        };
+        if interactive {
+            let kind = kind_of(&tag, &typ, has_onclick, &role).unwrap();
+            if !*first {
+                out.push(',');
+            }
+            *first = false;
+            let mut t = String::new();
+            text_of(d, idx, &mut t);
+            let text: String = collapse_ws(&t).chars().take(120).collect();
+            out.push_str("{\"tag\":");
+            json_escape(&tag, out);
+            out.push_str(",\"kind\":");
+            json_escape(kind, out);
+            out.push_str(",\"type\":");
+            json_escape(&typ, out);
+            out.push_str(",\"text\":");
+            json_escape(&text, out);
+            out.push_str(",\"href\":");
+            json_escape(n.attr("href").unwrap_or(""), out);
+            out.push_str(",\"name\":");
+            json_escape(n.attr("name").unwrap_or(""), out);
+            out.push_str(",\"html_id\":");
+            json_escape(n.attr("id").unwrap_or(""), out);
+            out.push_str(",\"value\":");
+            json_escape(n.attr("value").unwrap_or(""), out);
+            out.push_str(",\"disabled\":");
+            out.push_str(if n.attr("disabled").is_some() {
+                "true"
+            } else {
+                "false"
+            });
+            out.push_str(",\"onclick\":");
+            out.push_str(if has_onclick { "true" } else { "false" });
+            out.push_str(",\"role\":");
+            json_escape(n.attr("role").unwrap_or(""), out);
+            out.push_str(",\"tag_index\":");
+            out.push_str(&tag_index.to_string());
+            out.push_str(",\"form_index\":");
+            match form_index {
+                Some(f) => out.push_str(&f.to_string()),
+                None => out.push_str("null"),
+            }
+            if tag == "input" && (typ == "checkbox" || typ == "radio") {
+                out.push_str(",\"checked\":");
+                out.push_str(if n.attr("checked").is_some() {
+                    "true"
+                } else {
+                    "false"
+                });
+            } else {
+                out.push_str(",\"checked\":null");
+            }
+            if tag == "select" {
+                out.push_str(",\"options\":[");
+                let mut ofirst = true;
+                for &c in &children {
+                    let cn = &d.arena[c];
+                    if cn.tag.as_deref() == Some("option") {
+                        push_option(d, c, out, &mut ofirst);
+                    } else if cn.tag.as_deref() == Some("optgroup") {
+                        for &g in &cn.children {
+                            if d.arena[g].tag.as_deref() == Some("option") {
+                                push_option(d, g, out, &mut ofirst);
+                            }
+                        }
+                    }
+                }
+                out.push(']');
+            } else {
+                out.push_str(",\"options\":null");
+            }
+            out.push_str(",\"label_for\":");
+            json_escape(n.attr("for").unwrap_or(""), out);
+            out.push_str(",\"wraps_control\":");
+            out.push_str(if tag == "label" && subtree_has_control(d, idx) {
+                "true"
+            } else {
+                "false"
+            });
+            out.push('}');
+        }
+        for c in children {
+            walk(d, c, counts, form_stack, form_count, out, first);
+        }
+        if pushed_form {
+            form_stack.pop();
+        }
+    }
+
+    let mut out = String::from("[");
+    let mut first = true;
+    let mut counts = std::collections::HashMap::new();
+    let mut form_stack = Vec::new();
+    let mut form_count = 0usize;
+    walk(
+        d,
+        d.root,
+        &mut counts,
+        &mut form_stack,
+        &mut form_count,
+        &mut out,
+        &mut first,
+    );
+    out.push(']');
+    to_c_string(out)
+}
+
+/// Minimal layout / box model (see layout.rs).
+///
+/// Returns a malloc'd JSON object (free with `yousj_free_str`):
+/// `{"viewport_width":W,"truncated":bool,"boxes":[...]}` where each box
+/// is `{"tag","text","x","y","width","height","tag_index","html_id",
+/// "href","leaf"}`. Coordinates are CSS pixels relative to the document
+/// origin (top-left), estimated (no real font metrics): CJK 1.0em,
+/// other chars 0.5em, line height 1.2em. `viewport_width` <= 0 falls
+/// back to 1280. `tag_index` aligns with `yousj_interactive` (both
+/// count every element per tag in document order), so Python joins
+/// boxes to interactive-list entries by `(tag, tag_index)`. `leaf` is
+/// true when no descendant element got its own box (screenshot labels
+/// are drawn only for leaves).
+#[no_mangle]
+pub extern "C" fn yousj_layout(doc: *const Doc, viewport_width: i32) -> *mut c_char {
+    if doc.is_null() {
+        return std::ptr::null_mut();
+    }
+    let d = unsafe { &*doc };
+    to_c_string(layout::layout_json(d, viewport_width))
+}
+
+/// Serialize <script> elements as JSON (for button activation).
+///
+/// Returns a malloc'd JSON array (free with `yousj_free_str`):
+/// `[{"src": "...", "code": "..."}]` in document order. External
+/// scripts (``src``) have empty ``code`` (not fetched here); inline
+/// scripts carry their raw body text (newlines preserved, so the code
+/// stays runnable).
+///
+/// Why this exists: yousj-js event listeners live only for one
+/// ``run_js`` call — they do not persist across calls (DOM mutations
+/// do). A button click dispatched in a separate call can therefore
+/// never fire a handler registered by an earlier call. Button
+/// activation must run the page's inline scripts and the click
+/// expression in a SINGLE ``run_js`` call; this export supplies the
+/// scripts for that combined call. Scripts inside <template> are
+/// skipped (inert by spec); scripts in <head> are included.
+#[no_mangle]
+pub extern "C" fn yousj_scripts(doc: *const Doc) -> *mut c_char {
+    if doc.is_null() {
+        return std::ptr::null_mut();
+    }
+    let d = unsafe { &*doc };
+
+    fn text_of(d: &Doc, idx: usize, out: &mut String) {
+        let n = &d.arena[idx];
+        if n.tag.is_none() {
+            out.push_str(&n.text);
+        }
+        for &c in &n.children {
+            text_of(d, c, out);
+        }
+    }
+
+    fn walk(d: &Doc, idx: usize, out: &mut String, first: &mut bool) {
+        let (tag_opt, children) = {
+            let n = &d.arena[idx];
+            (n.tag.clone(), n.children.clone())
+        };
+        let tag = match tag_opt {
+            None => {
+                for c in children {
+                    walk(d, c, out, first);
+                }
+                return;
+            }
+            Some(t) => t,
+        };
+        if tag == "template" {
+            return;
+        }
+        if tag == "script" {
+            if !*first {
+                out.push(',');
+            }
+            *first = false;
+            let n = &d.arena[idx];
+            let mut code = String::new();
+            text_of(d, idx, &mut code);
+            out.push_str("{\"src\":");
+            json_escape(n.attr("src").unwrap_or(""), out);
+            out.push_str(",\"code\":");
+            json_escape(&code, out);
+            out.push('}');
+        }
+        for c in children {
+            walk(d, c, out, first);
+        }
+    }
+
+    let mut out = String::from("[");
+    let mut first = true;
+    walk(d, d.root, &mut out, &mut first);
     out.push(']');
     to_c_string(out)
 }
