@@ -111,6 +111,19 @@
     });
   }
 
+  /* ---- 时钟 ---- */
+  var WEEKDAYS = ["星期日", "星期一", "星期二", "星期三", "星期四", "星期五", "星期六"];
+  function tickClock() {
+    var now = new Date();
+    var hh = String(now.getHours()).padStart(2, "0");
+    var mm = String(now.getMinutes()).padStart(2, "0");
+    document.getElementById("clock").textContent = hh + ":" + mm;
+    document.getElementById("date").textContent =
+      (now.getMonth() + 1) + "月" + now.getDate() + "日 " + WEEKDAYS[now.getDay()];
+  }
+  tickClock();
+  setInterval(tickClock, 1000);
+
   renderEngine();
   renderBookmarks();
   input.focus();
