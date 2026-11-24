@@ -1,0 +1,48 @@
+plugins {
+    id 'com.android.application'
+    id 'org.jetbrains.kotlin.android'
+}
+
+android {
+    namespace 'cc.yousj.browser'
+    compileSdk 35
+
+    defaultConfig {
+        applicationId 'cc.yousj.browser'
+        minSdk 24
+        targetSdk 35
+        versionCode 1
+        versionName '1.0'
+        ndk { abiFilters 'arm64-v8a' }
+    }
+
+    signingConfigs {
+        release {
+            storeFile file('../signing/yousj-browser-release.jks')
+            storePassword project.findProperty('YOUSJ_STORE_PASSWORD') ?: System.getenv('YOUSJ_STORE_PASSWORD')
+            keyAlias 'yousj-browser'
+            keyPassword project.findProperty('YOUSJ_KEY_PASSWORD') ?: System.getenv('YOUSJ_KEY_PASSWORD')
+        }
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            signingConfig signingConfigs.release
+        }
+        debug {
+            applicationIdSuffix '.debug'
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+    kotlinOptions { jvmTarget = '17' }
+}
+
+dependencies {
+    implementation 'org.mozilla.geckoview:geckoview-arm64-v8a:138.0.20250517143237'
+    implementation 'androidx.annotation:annotation:1.8.2'
+}

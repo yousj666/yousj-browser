@@ -1,0 +1,8 @@
+# 签名钥与口令绝不入库
+signing/
+# 构建产物
+app/build/
+.gradle/
+local.properties
+# 手工依赖缓存
+manual/
