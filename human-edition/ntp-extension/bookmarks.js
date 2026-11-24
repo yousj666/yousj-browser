@@ -1,5 +1,5 @@
 /* Yousj 浏览器收藏夹：下面列表我填好的，用户可在 ntp.js 里自行增删 */
-const BOOKMARKS = [
+window.BOOKMARKS = [
   { name: "YouTube",   url: "https://www.youtube.com" },
   { name: "Gmail",     url: "https://mail.google.com" },
   { name: "GitHub",    url: "https://github.com" },

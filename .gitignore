@@ -27,3 +27,4 @@ __pycache__/
 # Extension private key (never publish)
 human-edition/ntp-extension/ntp-key.pem
 human-edition/ntp-extension/ntp-key.b64
+human-edition/build/

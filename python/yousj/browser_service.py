@@ -66,7 +66,16 @@ _browser = None
 def _get_browser():
     global _browser
     if _browser is None:
-        _browser = RealBrowser(proxy=PROXY, chrome_path=CHROME)
+        extra = []
+        try:
+            from yousj import extensions as _ext
+            dirs = _ext.enabled_dirs()
+            if dirs:
+                extra.append("--load-extension=" + ",".join(dirs))
+        except Exception:
+            pass
+        _browser = RealBrowser(proxy=PROXY, chrome_path=CHROME,
+                               extra_args=extra or None)
     return _browser
 
 
@@ -85,6 +94,46 @@ def _mask(text):
     if len(s) <= 4:
         return "***"
     return s[:3] + "****" + s[-3:]
+
+
+COOKIE_STORE = os.path.join(os.path.expanduser("~"),
+                            ".config", "yousj-browser", "cookies")
+
+
+def _cookie_store_path(name):
+    safe = "".join(c for c in str(name) if c.isalnum() or c in ".-_")
+    if not safe:
+        raise ValueError("bad cookie store name")
+    return os.path.join(COOKIE_STORE, safe + ".json")
+
+
+def _save_cookies_to_store(name, cookies):
+    os.makedirs(COOKIE_STORE, mode=0o700, exist_ok=True)
+    try:
+        os.chmod(COOKIE_STORE, 0o700)
+    except Exception:
+        pass
+    path = _cookie_store_path(name)
+    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "w") as f:
+        json.dump(cookies, f)
+    os.chmod(path, 0o600)
+    return path
+
+
+def _load_cookies_from_store(name):
+    with open(_cookie_store_path(name)) as f:
+        return json.load(f)
+
+
+def _cookie_meta(cookies):
+    # Names and domains only: cookie values are session secrets and
+    # never leave the browser/store through this API.
+    return [{"name": c.get("name"), "domain": c.get("domain"),
+             "path": c.get("path"), "expires": c.get("expires"),
+             "httpOnly": bool(c.get("httpOnly")),
+             "secure": bool(c.get("secure")),
+             "session": bool(c.get("session"))} for c in cookies]
 
 
 def call_tool(tool, args):
@@ -174,6 +223,64 @@ def call_tool(tool, args):
                 "countdown_hint": ("秒" in text or "s" in text),
                 "note": "mouse_proof empty means the CDP mouse event did not "
                         "reach the page; do not claim SMS was sent."}
+    if tool == "cookies_list":
+        urls = args.get("urls")
+        cookies = b.get_cookies(urls)
+        return {"ok": True, "count": len(cookies),
+                "cookies": _cookie_meta(cookies)}
+    if tool == "cookies_set":
+        n = b.set_cookies(args.get("cookies") or [])
+        return {"ok": True, "set": n}
+    if tool == "cookies_save":
+        urls = args.get("urls")
+        cookies = b.get_cookies(urls)
+        path = _save_cookies_to_store(args["name"], cookies)
+        return {"ok": True, "saved": len(cookies), "store": args["name"],
+                "cookies": _cookie_meta(cookies)}
+    if tool == "cookies_load":
+        cookies = _load_cookies_from_store(args["name"])
+        n = b.set_cookies(cookies)
+        return {"ok": True, "loaded": n, "store": args["name"]}
+    if tool == "cookies_saved":
+        names = []
+        if os.path.isdir(COOKIE_STORE):
+            names = sorted(f[:-5] for f in os.listdir(COOKIE_STORE)
+                           if f.endswith(".json"))
+        return {"ok": True, "stores": names}
+    if tool == "cookies_delete":
+        b.delete_cookies(name=args.get("name"), url=args.get("url"),
+                         domain=args.get("domain"))
+        return {"ok": True}
+    if tool == "cookies_clear":
+        b.clear_cookies()
+        return {"ok": True}
+    if tool == "extensions_list":
+        from yousj import extensions as _ext
+        return {"ok": True, "extensions": _ext.list_extensions()}
+    if tool == "extensions_install":
+        from yousj import extensions as _ext
+        if args.get("store_id"):
+            ext_id, info = _ext.install_from_store(str(args["store_id"]))
+        elif args.get("path"):
+            ext_id, info = _ext.install_from_path(str(args["path"]))
+        else:
+            return {"ok": False, "error": "need path or store_id"}
+        _close_browser()
+        return {"ok": True, "installed": ext_id, "info": info,
+                "note": "browser closed; next goto relaunches with the "
+                        "new extension set"}
+    if tool == "extensions_remove":
+        from yousj import extensions as _ext
+        _ext.remove(str(args["id"]))
+        _close_browser()
+        return {"ok": True, "removed": str(args["id"]),
+                "note": "browser closed; next goto relaunches without it"}
+    if tool == "extensions_set_enabled":
+        from yousj import extensions as _ext
+        info = _ext.set_enabled(str(args["id"]), bool(args["enabled"]))
+        _close_browser()
+        return {"ok": True, "info": info,
+                "note": "browser closed; next goto applies the change"}
     if tool == "new_page":
         # Open a new tab and switch control to it. The old tab stays
         # open; use switch_page to go back. Screenshot after this

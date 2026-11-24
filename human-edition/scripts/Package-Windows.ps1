@@ -106,15 +106,10 @@ Expand-Archive -Path $ubZip -DestinationPath $ubDst -Force
 Write-Host "已预装：uBlock Origin $ubVer ($UblockExtId)"
 
 # ---------- 3. 默认配置 Preferences ----------
-function New-ExtSetting([string]$ExtDir) {
-  $manifest = Get-Content (Join-Path $ExtDir "manifest.json") -Raw -Encoding UTF8 | ConvertFrom-Json
-  return @{
-    active_bit = $true
-    manifest   = $manifest
-    path       = $ExtDir
-    state      = 1
-  }
-}
+# 注意：不要往 Preferences 里写 extensions.settings 预装扩展——
+# 2026-11-24 在 Chromium 158 上实测，这样写的条目不会激活扩展
+# （content script 不执行）。预装扩展改走快捷方式的
+# --load-extension 参数（已实测可真实加载运行），见第 4 步。
 
 $bmChildren = @()
 $i = 1
@@ -137,12 +132,6 @@ $prefs = [ordered]@{
   homepage      = "chrome://newtab/"
   homepage_is_newtabpage = $true
   signin        = @{ allowed = $false }   # 不要登录功能：禁用浏览器登录入口
-  extensions    = @{
-    settings = @{
-      $NtpExtId    = (New-ExtSetting $ntpDst)
-      $UblockExtId = (New-ExtSetting $ubDst)
-    }
-  }
 }
 
 New-Item -ItemType Directory -Force -Path $defaultDir | Out-Null
@@ -154,7 +143,7 @@ Write-Host "已写入默认配置：$prefsPath"
 $wshell   = New-Object -ComObject WScript.Shell
 $shortcut = $wshell.CreateShortcut((Join-Path $wshell.SpecialFolders("Desktop") "Yousj Browser.lnk"))
 $shortcut.TargetPath      = $chromeExe.FullName
-$shortcut.Arguments       = '--user-data-dir="' + $userData + '"'
+$shortcut.Arguments       = '--user-data-dir="' + $userData + '" --load-extension="' + $ntpDst + ',' + $ubDst + '"'
 $shortcut.WorkingDirectory = $chromeExe.DirectoryName
 $shortcut.Description     = "Yousj Browser"
 $shortcut.Save()

@@ -586,6 +586,21 @@ class RealMouse:
         if el is None:
             raise ValueError("no interactive element with id %r"
                              % (element_id,))
+        # Boxes are viewport-relative: an element below the fold sits
+        # outside the hittable area and a click there lands nowhere.
+        # Scroll it to the middle of the viewport first, then re-read
+        # its (fresh) box.
+        locator = _element_js(el)
+        if locator:
+            try:
+                self._b.evaluate(
+                    "(function(){var e=%s;"
+                    "if(e){e.scrollIntoView({block:'center',"
+                    "inline:'center'});}return !!e;})()" % locator)
+                els = self._b.elements()
+                el = next((e for e in els if e["id"] == element_id), el)
+            except Exception:
+                pass
         box = el.get("box")
         if not box or box["width"] <= 0 or box["height"] <= 0:
             raise ValueError(
@@ -676,7 +691,13 @@ class RealBrowser:
     watching a run by eye.
     """
 
-    DEFAULT_CHROME = "/opt/meta-chromium/chrome"
+    # /opt/meta-chromium/chrome refuses standalone startup ("Hatch
+    # WebGL domain policy is required"), so prefer the project wrapper
+    # (Chrome-for-Testing + cert bypass) whenever it exists.
+    _WRAPPER = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                            "..", "..", "chrome-yousj.sh")
+    DEFAULT_CHROME = (_WRAPPER if os.path.isfile(_WRAPPER)
+                      else "/opt/meta-chromium/chrome")
 
     def __init__(self, chrome_path=None, headless=True, width=1280,
                  height=800, port=None, user_data_dir=None, proxy=None,
@@ -741,6 +762,17 @@ class RealBrowser:
             self._cdp = _CDP(ws_url, timeout=timeout)
             self._cdp.call("Page.enable")
             self._cdp.call("Runtime.enable")
+            # Chrome 158 headless otherwise lays out pages in a default
+            # 800x600 viewport even when --window-size says otherwise,
+            # which leaves element boxes below y=600 outside the area
+            # real mouse events can hit. Pin the layout viewport to the
+            # configured window size.
+            try:
+                self._cdp.call("Emulation.setDeviceMetricsOverride", {
+                    "width": self.width, "height": self.height,
+                    "deviceScaleFactor": 1, "mobile": False})
+            except Exception:
+                pass
         except Exception:
             self.close()
             raise
@@ -952,6 +984,70 @@ class RealBrowser:
                 "document.body ? document.body.innerText : ''") or "")[:limit]
         except Exception:
             return ""
+
+    # -- cookies -----------------------------------------------------------
+
+    def _network_enable(self):
+        if not getattr(self, "_network_enabled", False):
+            self._cdp.call("Network.enable")
+            self._network_enabled = True
+
+    def get_cookies(self, urls=None):
+        """All cookies for ``urls`` (default: the current page URL),
+        as raw CDP cookie dicts (name, value, domain, path, expires,
+        httpOnly, secure, session, sameSite). Values are secrets:
+        callers must not log or print them."""
+        self._network_enable()
+        params = {}
+        if urls:
+            params["urls"] = list(urls)
+        res = self._cdp.call("Network.getCookies", params)
+        return res.get("cookies", [])
+
+    def set_cookies(self, cookies):
+        """Set cookies from Cookie-Editor style dicts. Each item needs
+        name+value and either url or domain. Returns how many were set."""
+        self._network_enable()
+        cleaned = []
+        for c in cookies or []:
+            if not c.get("name") or c.get("value") is None:
+                continue
+            item = {"name": c["name"], "value": str(c["value"])}
+            if c.get("url"):
+                item["url"] = c["url"]
+            elif c.get("domain"):
+                item["domain"] = c["domain"]
+            else:
+                continue
+            for k in ("path", "secure", "httpOnly", "sameSite"):
+                if c.get(k) is not None:
+                    item[k] = c[k]
+            exp = c.get("expires") or c.get("expirationDate")
+            if exp and float(exp) > 0:
+                item["expires"] = float(exp)
+            cleaned.append(item)
+        if cleaned:
+            self._cdp.call("Network.setCookies", {"cookies": cleaned})
+        return len(cleaned)
+
+    def delete_cookies(self, name=None, url=None, domain=None):
+        """Delete cookies matching name (and optionally url/domain)."""
+        self._network_enable()
+        params = {}
+        if name:
+            params["name"] = name
+        if url:
+            params["url"] = url
+        if domain:
+            params["domain"] = domain
+        self._cdp.call("Network.deleteCookies", params)
+        return True
+
+    def clear_cookies(self):
+        """Remove ALL cookies in the browser profile."""
+        self._network_enable()
+        self._cdp.call("Network.clearBrowserCookies")
+        return True
 
     # -- elements ----------------------------------------------------------
 

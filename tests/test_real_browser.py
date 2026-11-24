@@ -136,6 +136,39 @@ def main():
                 check("mouse-position", b.mouse.position() == res["to"],
                       "pos=%s to=%s" % (b.mouse.position(), res["to"]))
 
+            # 6b. cookies: set / get / delete / clear against a local
+            # HTTP origin (file:// URLs cannot carry cookies). The
+            # browser disables Local Network Access checks, so a
+            # 127.0.0.1 server is reachable.
+            import functools
+            import http.server
+            import threading
+            handler = functools.partial(
+                http.server.SimpleHTTPRequestHandler, directory=pages)
+            httpd = http.server.HTTPServer(("127.0.0.1", 0), handler)
+            threading.Thread(target=httpd.serve_forever,
+                             daemon=True).start()
+            try:
+                origin = "http://127.0.0.1:%d/" % httpd.server_address[1]
+                b.goto(origin + "form.html")
+                n = b.set_cookies([{"name": "yousj_t", "value": "v1",
+                                    "url": origin}])
+                got = b.get_cookies([origin])
+                names = [c["name"] for c in got]
+                check("cookie-set-get", n == 1 and "yousj_t" in names,
+                      "set=%s names=%s" % (n, names))
+                b.delete_cookies(name="yousj_t", url=origin)
+                names = [c["name"] for c in b.get_cookies([origin])]
+                check("cookie-delete", "yousj_t" not in names,
+                      "names=%s" % names)
+                b.set_cookies([{"name": "yousj_t2", "value": "v2",
+                                "url": origin}])
+                b.clear_cookies()
+                check("cookie-clear", b.get_cookies([origin]) == [],
+                      "")
+            finally:
+                httpd.shutdown()
+
             # 7. context manager closes the browser process
             proc = b._proc
         check("browser-closed", proc is not None and proc.poll() is not None,
